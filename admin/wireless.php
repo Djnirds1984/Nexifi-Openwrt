@@ -34,17 +34,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['add_ssid'])) {
         $ssid = escapeshellarg($_POST['ssid']);
         $radio = escapeshellarg($_POST['radio']);
-        $network = escapeshellarg($_POST['network']);
         $encryption = escapeshellarg($_POST['encryption']); // none, psk2
         $key = escapeshellarg($_POST['key']);
         
-        // Add wifi-iface
+        // Add wifi-iface without network attachment (user will bridge it later)
         exec("uci add wireless wifi-iface > /tmp/new_iface_id");
         $id = trim(file_get_contents('/tmp/new_iface_id'));
         exec("uci set wireless.$id.device=$radio");
         exec("uci set wireless.$id.mode='ap'");
         exec("uci set wireless.$id.ssid=$ssid");
-        exec("uci set wireless.$id.network=$network");
+        // exec("uci set wireless.$id.network=$network"); // REMOVED: Managed via Bridge
         exec("uci set wireless.$id.encryption=$encryption");
         if ($_POST['encryption'] !== 'none') {
             exec("uci set wireless.$id.key=$key");
@@ -103,12 +102,7 @@ foreach ($wifi_map as $w) {
             <?php endforeach; ?>
         </select>
         
-        <label>Attach to Network</label>
-        <select name="network" style="width:100%; padding: 10px; margin-bottom: 15px;">
-            <?php foreach ($networks as $n): ?>
-                <option value="<?php echo $n; ?>"><?php echo $n; ?></option>
-            <?php endforeach; ?>
-        </select>
+        <!-- Network Attachment Removed - Use Bridge Settings -->
         
         <label>Security</label>
         <select name="encryption" id="enc_type" onchange="toggleKey()" style="width:100%; padding: 10px; margin-bottom: 15px;">
