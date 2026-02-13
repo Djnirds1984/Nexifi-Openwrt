@@ -10,7 +10,8 @@ echo "Installing required packages (iptables, php, etc)..."
 # Install iptables modules for NAT and Conntrack, and PHP packages
 # iptables-mod-nat-extra is needed for REDIRECT target
 # iptables-mod-conntrack-extra is needed for conntrack match
-opkg install iptables-nft iptables-mod-nat-extra iptables-mod-conntrack-extra php8-cli php8-cgi
+# php8-mod-session is needed for admin login (session_start)
+opkg install iptables-nft iptables-mod-nat-extra iptables-mod-conntrack-extra php8-cli php8-cgi php8-mod-session
 # opkg install php8-mod-json || true # Optional or might be included
 
 # Verify PHP installation
