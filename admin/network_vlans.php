@@ -132,7 +132,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exec("uci show network", $all_config);
         foreach ($all_config as $line) {
              // Look for network.@device[X].name='eth0.10' OR network.dev_section.name='eth0.10'
-             if (preg_match("/network\.([^.]+)\.name='$del_dev'/", $line, $m)) {
+             // Handle quotes optionally: name='dev' or name=dev
+             if (preg_match("/network\.([^.]+)\.name=['\"]?" . preg_quote($del_dev, '/') . "['\"]?$/", $line, $m)) {
                  $sectionToDelete = $m[1];
                  break; 
              }
@@ -145,7 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $interfaceToDelete = '';
             foreach ($all_config as $line) {
                 // network.vlan10.device='eth0.10'
-                if (preg_match("/network\.([^.]+)\.device='$del_dev'/", $line, $m)) {
+                if (preg_match("/network\.([^.]+)\.device=['\"]?" . preg_quote($del_dev, '/') . "['\"]?$/", $line, $m)) {
                     $iface = $m[1];
                     // Ensure it's not the device definition itself
                     if (strpos($iface, '@device') === false) {
