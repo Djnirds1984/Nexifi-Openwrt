@@ -125,8 +125,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exec("wifi reload");
         $msg = "Bridge '$bridge_name' updated with ports and WiFi.";
     }
+}
 
 // ...
+
+$interfaces = getInterfaces();
 
 // Get Wireless SSIDs for the form
 $ssids = [];
