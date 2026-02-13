@@ -63,7 +63,7 @@ uci add_list uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
 if [ ! -f /www/index.php ] || grep -q "openwrt.org" /www/index.php; then
     cat << 'EOF' > /www/index.php
 <?php
-header("Location: /pisowifi/");
+header("Location: http://10.0.0.1/pisowifi/");
 exit;
 ?>
 EOF

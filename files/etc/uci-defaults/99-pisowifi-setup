@@ -24,7 +24,8 @@ foreach ($router_ips as $ip) {
 
 if (!$is_admin) {
     // Captive portal user
-    header("Location: /pisowifi/");
+    // Use absolute URL to force captive portal detection on some devices
+    header("Location: http://10.0.0.1/pisowifi/");
     exit;
 }
 
