@@ -140,10 +140,114 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         $msg = "Hotspot Server '$ssid_display' created successfully!";
     }
+    
+    // Delete Hotspot Logic
+    if (isset($_POST['delete_hotspot'])) {
+        $del_net = $_POST['delete_hotspot']; // e.g. hotspot_123456
+        
+        // 1. Delete Network
+        exec("uci delete network.$del_net");
+        
+        // 2. Delete DHCP
+        exec("uci delete dhcp.$del_net");
+        
+        // 3. Delete Wireless (Need to find the iface linked to this network)
+        exec("uci show wireless | grep \".network='$del_net'\"", $w_out);
+        foreach ($w_out as $line) {
+            // wireless.@wifi-iface[0].network='hotspot_...'
+            if (preg_match("/wireless\.(@wifi-iface\[\d+\])\./", $line, $m)) {
+                exec("uci delete wireless." . $m[1]);
+            }
+        }
+        
+        // 4. Delete Firewall Rules (Zone)
+        // Find zone that has this network in list
+        // This is complex because 'network' is a list.
+        // Easier: Just reload firewall, OpenWrt handles dangling references usually, 
+        // OR we scan zones.
+        // Assuming we added it to 'pisowifi' zone.
+        // We need to remove the list item.
+        exec("uci show firewall | grep \".name='pisowifi'\"", $fw_out);
+        $piso_zone_key = "";
+        foreach($fw_out as $line) {
+            if (strpos($line, ".name='pisowifi'") !== false) {
+                $parts = explode('.', $line);
+                $piso_zone_key = $parts[0] . '.' . $parts[1];
+                break;
+            }
+        }
+        if ($piso_zone_key) {
+            exec("uci del_list $piso_zone_key.network='$del_net'");
+        }
+        
+        exec("uci commit network");
+        exec("uci commit dhcp");
+        exec("uci commit wireless");
+        exec("uci commit firewall");
+        
+        exec("/etc/init.d/network reload");
+        exec("/etc/init.d/firewall reload");
+        exec("wifi reload");
+        
+        $msg = "Hotspot deleted successfully.";
+    }
 }
 
 $net_devices = getNetworkDevices();
 $radios = getRadios();
+
+// --- List Existing Hotspots ---
+$hotspots = [];
+
+// 1. Scan Network Config for interfaces starting with 'hotspot_'
+exec("uci show network", $net_out);
+foreach ($net_out as $line) {
+    // network.hotspot_1740000000=interface
+    if (preg_match("/network\.(hotspot_\d+)=interface/", $line, $m)) {
+        $id = $m[1];
+        $hotspots[$id] = ['id' => $id, 'type' => 'wired', 'ssid' => '-']; // Default
+        
+        // Get IP
+        exec("uci get network.$id.ipaddr 2>/dev/null", $ip);
+        $hotspots[$id]['ip'] = isset($ip[0]) ? $ip[0] : '?';
+        unset($ip);
+        
+        // Get Device
+        exec("uci get network.$id.device 2>/dev/null", $dev);
+        if (isset($dev[0])) {
+            $hotspots[$id]['device'] = $dev[0];
+        }
+        unset($dev);
+    }
+}
+
+// 2. Scan Wireless to find matching SSIDs
+exec("uci show wireless", $wifi_out);
+foreach ($wifi_out as $line) {
+    // wireless.@wifi-iface[0].network='hotspot_1740000000'
+    if (preg_match("/wireless\.(@wifi-iface\[\d+\])\.network='(hotspot_\d+)'/", $line, $m)) {
+        $iface_id = $m[1];
+        $net_id = $m[2];
+        
+        if (isset($hotspots[$net_id])) {
+            $hotspots[$net_id]['type'] = 'wireless';
+            
+            // Get SSID
+            exec("uci get wireless.$iface_id.ssid 2>/dev/null", $ssid);
+            if (isset($ssid[0])) {
+                $hotspots[$net_id]['ssid'] = $ssid[0];
+            }
+            unset($ssid);
+            
+            // Get Radio
+            exec("uci get wireless.$iface_id.device 2>/dev/null", $rad);
+            if (isset($rad[0])) {
+                $hotspots[$net_id]['device'] = $rad[0]; // Override 'device' with radio name
+            }
+            unset($rad);
+        }
+    }
+}
 ?>
 
 <div class="card">
@@ -198,6 +302,41 @@ $radios = getRadios();
         
         <button type="submit" name="add_hotspot" class="btn btn-primary">Create Hotspot Server</button>
     </form>
+</div>
+
+<div class="card">
+    <h3>Existing Hotspot Servers</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Name / SSID</th>
+                <th>Type</th>
+                <th>Device</th>
+                <th>Gateway IP</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if (empty($hotspots)): ?>
+                <tr><td colspan="5" style="text-align:center;">No hotspot servers configured</td></tr>
+            <?php else: ?>
+                <?php foreach ($hotspots as $h): ?>
+                <tr>
+                    <td><?php echo ($h['type'] == 'wireless') ? $h['ssid'] : 'Wired Hotspot'; ?></td>
+                    <td><?php echo ucfirst($h['type']); ?></td>
+                    <td><?php echo $h['device']; ?></td>
+                    <td><?php echo $h['ip']; ?></td>
+                    <td>
+                        <form method="post" onsubmit="return confirm('Are you sure you want to delete this hotspot?');">
+                            <input type="hidden" name="delete_hotspot" value="<?php echo $h['id']; ?>">
+                            <button type="submit" class="btn btn-danger" style="padding: 4px 8px; font-size: 0.8em;">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </tbody>
+    </table>
 </div>
 
 <script>
