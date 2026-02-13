@@ -2,6 +2,33 @@
 
 echo "Installing Pisowifi..."
 
+# Install dependencies
+echo "Updating package lists..."
+opkg update
+
+echo "Installing required packages (iptables, php, etc)..."
+# Install iptables (try nft variant first, fallback to legacy if needed, but usually iptables-nft covers it)
+# We also need php-cli for the backend service and php-cgi for the web portal
+opkg install iptables-nft php8-cli php8-mod-json php8-cgi
+
+# Verify PHP installation
+if [ ! -x /usr/bin/php-cli ]; then
+    echo "Error: php-cli not found or not executable. Trying to find alternative..."
+    if [ -x /usr/bin/php ]; then
+        ln -s /usr/bin/php /usr/bin/php-cli
+        echo "Linked /usr/bin/php to /usr/bin/php-cli"
+    else
+        echo "CRITICAL: PHP not found. Please install php8-cli manually."
+    fi
+fi
+
+# Configure uhttpd to execute PHP
+uci set uhttpd.main.index_page='index.php'
+uci delete uhttpd.main.interpreter 2>/dev/null
+uci add_list uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
+uci commit uhttpd
+/etc/init.d/uhttpd restart
+
 # Create directories
 mkdir -p /etc/config
 mkdir -p /etc/init.d
