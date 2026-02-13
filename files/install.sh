@@ -409,6 +409,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simulate_coin'])) {
 </html>
 EOF_INDEX
 
+cat << 'EOF_ADMIN' > /www/pisowifi/admin.php
+<?php
+// admin.php - Pisowifi Administration
+
+// REDIRECT TO NEW ADMIN PANEL
+header("Location: /pisowifi/admin/");
+exit;
+?>
+EOF_ADMIN
+
 # 5. /usr/lib/lua/luci/controller/pisowifi.lua
 cat << 'EOF_CONTROLLER' > /usr/lib/lua/luci/controller/pisowifi.lua
 module("luci.controller.pisowifi", package.seeall)
@@ -757,7 +767,7 @@ cat << 'EOF_VIEW' > /usr/lib/lua/luci/view/pisowifi/admin.htm
     The Pisowifi system is managed via a separate PHP interface.
 </p>
 <p>
-    <a href="/pisowifi/admin.php" target="_blank" class="cbi-button cbi-button-apply">Open Pisowifi Admin Panel</a>
+    <a href="/pisowifi/admin/" target="_blank" class="cbi-button cbi-button-apply">Open Pisowifi Admin Panel</a>
 </p>
 <%+footer%>
 EOF_VIEW
