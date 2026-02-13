@@ -22,6 +22,7 @@ $page = basename($_SERVER['PHP_SELF'], ".php");
             <li><a href="vlans.php" class="<?php echo $page == 'vlans' ? 'active' : ''; ?>">VLAN Settings</a></li>
             <li><a href="users.php" class="<?php echo $page == 'users' ? 'active' : ''; ?>">Users</a></li>
             <li><a href="sales.php" class="<?php echo $page == 'sales' ? 'active' : ''; ?>">Sales</a></li>
+            <li><a href="status.php" class="<?php echo $page == 'status' ? 'active' : ''; ?>">System Status</a></li>
             <li><a href="settings.php" class="<?php echo $page == 'settings' ? 'active' : ''; ?>">Settings</a></li>
             <li><a href="logout.php">Logout</a></li>
         </ul>

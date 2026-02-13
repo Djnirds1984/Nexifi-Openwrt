@@ -80,6 +80,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exec("uci set wireless.$id.ssid=$ssid");
             exec("uci set wireless.$id.network='$name'");
             exec("uci set wireless.$id.encryption='none'");
+            
+            // Force Enable Radio
+            exec("uci set wireless.$radio.disabled='0'");
+            // Set Country Code (PH for Philippines or US) to ensure 5GHz works or legal channels
+            exec("uci set wireless.$radio.country='PH'"); 
+            // Set Channel to auto or specific (e.g. 1, 6, 11 for 2.4GHz)
+            // exec("uci set wireless.$radio.channel='auto'");
         }
         
         // --- 2. DHCP Configuration ---
