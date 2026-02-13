@@ -18,7 +18,8 @@ $page = basename($_SERVER['PHP_SELF'], ".php");
         <div class="sidebar-header">Pisowifi Panel</div>
         <ul class="nav-links">
             <li><a href="index.php" class="<?php echo $page == 'index' ? 'active' : ''; ?>">Dashboard</a></li>
-            <li><a href="hotspots.php" class="<?php echo $page == 'hotspots' ? 'active' : ''; ?>">Hotspot Settings</a></li>
+            <li><a href="wireless.php" class="<?php echo $page == 'wireless' ? 'active' : ''; ?>">Wireless Settings</a></li>
+            <li><a href="hotspots.php" class="<?php echo $page == 'hotspots' ? 'active' : ''; ?>">Hotspot Manager</a></li>
             <li><a href="network.php" class="<?php echo (strpos($page, 'network') === 0) ? 'active' : ''; ?>">Network</a></li>
             <li><a href="users.php" class="<?php echo $page == 'users' ? 'active' : ''; ?>">Users</a></li>
             <li><a href="sales.php" class="<?php echo $page == 'sales' ? 'active' : ''; ?>">Sales</a></li>

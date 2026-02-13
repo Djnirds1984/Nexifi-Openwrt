@@ -225,65 +225,32 @@ $networks = getNetworks();
 ?>
 
 <div class="card">
-    <h3>Create Hotspot Server</h3>
+    <h3>Hotspot Manager (Captive Portal)</h3>
     <?php if ($msg): ?><div class="alert alert-success"><?php echo $msg; ?></div><?php endif; ?>
     
+    <p>This tool creates a <b>Network Interface</b> dedicated for Hotspot/Captive Portal use. It configures IP, DHCP, and Firewall rules.</p>
+    <p><b>Note:</b> To broadcast this hotspot over WiFi, go to <a href="wireless.php">Wireless Settings</a> and attach an SSID to the network you create here.</p>
+    
     <form method="post" id="hotspotForm">
-        <label>Interface Type</label>
-        <select name="interface_type" id="interface_type" onchange="toggleFields()" required style="width:100%; padding: 10px; margin-bottom: 15px;">
-            <option value="wireless">Wireless (WiFi AP)</option>
-            <option value="wired">Wired (Full Hotspot Setup)</option>
+        <input type="hidden" name="interface_type" value="wired">
+        
+        <label>Network Name (Interface ID)</label>
+        <input type="text" name="wired_device" placeholder="Ex: hotspot_vlan10 (Config Name)" required>
+        <p style="font-size:0.8em; color:#666; margin-top:-10px;">A unique name for this hotspot network.</p>
+        
+        <label>Gateway IP Address</label>
+        <input type="text" name="ip" placeholder="Ex: 10.0.20.1" required>
+        
+        <label>Subnet Mask</label>
+        <select name="netmask" style="width:100%; padding: 10px; margin-bottom: 15px;">
+            <option value="255.255.255.0">/24 (255.255.255.0) - 254 IPs</option>
+            <option value="255.255.254.0">/23 (255.255.254.0) - 510 IPs</option>
+            <option value="255.255.252.0">/22 (255.255.252.0) - 1022 IPs</option>
+            <option value="255.255.248.0">/21 (255.255.248.0) - 2046 IPs</option>
+            <option value="255.0.0.0">/8 (255.0.0.0) - 16M IPs</option>
         </select>
         
-        <!-- Wireless Fields -->
-        <div id="wireless_fields">
-            <label>WiFi Name (SSID)</label>
-            <input type="text" name="ssid" placeholder="Ex: Pisowifi_Hotspot">
-            
-            <label>Wireless Radio</label>
-            <select name="radio" style="width:100%; padding: 10px; margin-bottom: 15px;">
-                <option value="dual_band">Dual Band (2.4GHz + 5GHz) - Band Steering</option>
-                <?php foreach ($radios as $r): ?>
-                    <option value="<?php echo $r; ?>"><?php echo $r; ?> (Single Band)</option>
-                <?php endforeach; ?>
-            </select>
-            
-            <label>Attach to Network (Bridge/Interface)</label>
-            <select name="network_attach" style="width:100%; padding: 10px; margin-bottom: 15px;">
-                <?php foreach ($networks as $net): ?>
-                    <option value="<?php echo $net; ?>" <?php echo ($net == 'lan') ? 'selected' : ''; ?>><?php echo $net; ?></option>
-                <?php endforeach; ?>
-            </select>
-            <p style="font-size:0.8em; color:#666; margin-top:-10px;">Select the network interface (e.g., 'lan' or your custom bridge) to bridge this WiFi to. IP/DHCP must be configured on that network.</p>
-        </div>
-        
-        <!-- Wired Fields -->
-        <div id="wired_fields" style="display:none;">
-            <label>Network Interface</label>
-            <select name="wired_device" style="width:100%; padding: 10px; margin-bottom: 15px;">
-                <?php foreach ($net_devices as $dev): ?>
-                    <option value="<?php echo $dev; ?>"><?php echo $dev; ?></option>
-                <?php endforeach; ?>
-            </select>
-            <p style="font-size:0.8em; color:#666; margin-top:-10px;">Select physical port (e.g. eth1) or VLAN (e.g. eth1.10).</p>
-            
-            <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
-            <h4>Network Settings (Gateway)</h4>
-            
-            <label>Gateway IP Address</label>
-            <input type="text" name="ip" placeholder="Ex: 10.0.20.1">
-            
-            <label>Subnet Mask</label>
-            <select name="netmask" style="width:100%; padding: 10px; margin-bottom: 15px;">
-                <option value="255.255.255.0">/24 (255.255.255.0) - 254 IPs</option>
-                <option value="255.255.254.0">/23 (255.255.254.0) - 510 IPs</option>
-                <option value="255.255.252.0">/22 (255.255.252.0) - 1022 IPs</option>
-                <option value="255.255.248.0">/21 (255.255.248.0) - 2046 IPs</option>
-                <option value="255.0.0.0">/8 (255.0.0.0) - 16M IPs</option>
-            </select>
-        </div>
-        
-        <button type="submit" name="add_hotspot" class="btn btn-primary">Create Hotspot Server</button>
+        <button type="submit" name="add_hotspot" class="btn btn-primary">Create Hotspot Network</button>
     </form>
 </div>
 
@@ -324,16 +291,7 @@ $networks = getNetworks();
 </div>
 
 <script>
-function toggleFields() {
-    var type = document.getElementById('interface_type').value;
-    if (type === 'wired') {
-        document.getElementById('wired_fields').style.display = 'block';
-        document.getElementById('wireless_fields').style.display = 'none';
-    } else {
-        document.getElementById('wired_fields').style.display = 'none';
-        document.getElementById('wireless_fields').style.display = 'block';
-    }
-}
+// No toggle needed for wired-only mode
 </script>
 
 <?php include 'footer.php'; ?>
