@@ -27,9 +27,47 @@ function getInterfaces() {
     return $interfaces;
 }
 
-// ... (existing post logic)
-
-// Update Bridge Logic needs to handle Wireless attachment
+// Create/Update Bridge Logic
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['add_bridge'])) {
+        $name = escapeshellarg($_POST['bridge_name']); // e.g. br-lan
+        $ports = $_POST['ports']; // array of interfaces
+        
+        $devName = $_POST['bridge_name'];
+        if (strpos($devName, 'br-') !== 0) {
+            $devName = 'br-' . $devName;
+        }
+        
+        // Add device section
+        exec("uci add network device > /tmp/new_dev_id");
+        $id = trim(file_get_contents('/tmp/new_dev_id'));
+        exec("uci set network.$id.name='$devName'");
+        exec("uci set network.$id.type='bridge'");
+        
+        // Add ports
+        foreach ($ports as $port) {
+            exec("uci add_list network.$id.ports='$port'");
+        }
+        
+        exec("uci commit network");
+        exec("/etc/init.d/network reload");
+        
+        $msg = "Bridge '$devName' created successfully.";
+    }
+    
+    if (isset($_POST['delete_bridge'])) {
+        $del_dev = $_POST['delete_bridge'];
+        // Find section
+        exec("uci show network | grep \".name='$del_dev'\"", $out);
+        if (!empty($out)) {
+            $section = explode('.', explode('=', $out[0])[0])[1];
+            exec("uci delete network.$section");
+            exec("uci commit network");
+            exec("/etc/init.d/network reload");
+            $msg = "Bridge '$del_dev' deleted.";
+        }
+    }
+    
     if (isset($_POST['update_bridge'])) {
         $bridge_name = $_POST['bridge_name_edit']; // e.g. br-lan or lan (if using alias)
         $new_ports = isset($_POST['ports_edit']) ? $_POST['ports_edit'] : [];
