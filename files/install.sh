@@ -27,8 +27,10 @@ fi
 # Configure uhttpd to execute PHP
 uci set uhttpd.main.index_page='index.php'
 # Ensure PHP interpreter is set (remove if exists then add to avoid duplicates)
+# We need to make sure we don't break existing lua config
 uci -q del_list uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
 uci add_list uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
+# Also ensure .html is handled or at least index.php is prioritized
 uci commit uhttpd
 /etc/init.d/uhttpd restart
 
