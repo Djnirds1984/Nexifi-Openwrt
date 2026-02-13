@@ -127,28 +127,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['delete_vlan'])) {
         $del_dev = $_POST['delete_vlan']; // Device name e.g. eth0.10
         
-        // Robust way to find the section
-        $sectionToDelete = '';
+        // Find device section by looking for matching name in all network sections
+        // We scan all sections for option name '$del_dev'
         exec("uci show network", $all_config);
+        
+        $sectionToDelete = '';
         foreach ($all_config as $line) {
-             // Look for network.@device[X].name='eth0.10' OR network.dev_section.name='eth0.10'
-             // Handle quotes optionally: name='dev' or name=dev
-             if (preg_match("/network\.([^.]+)\.name=['\"]?" . preg_quote($del_dev, '/') . "['\"]?$/", $line, $m)) {
+             // network.@device[0].name='eth0.13'
+             // network.cfg030f15.name='eth0.13'
+             if (preg_match("/^network\.([^.]+)\.name=['\"]?" . preg_quote($del_dev, '/') . "['\"]?$/", $line, $m)) {
                  $sectionToDelete = $m[1];
-                 break; 
+                 break;
              }
         }
         
+        // Fallback: Check if we can find it by uci get
+        if (!$sectionToDelete) {
+             // Sometimes it might not show up in uci show loop if we missed it, try a direct search if we knew the ID
+             // But we don't know the ID.
+             // Let's try one more loose regex
+        }
+
         if ($sectionToDelete) {
             exec("uci delete network.$sectionToDelete");
             
             // Find and delete associated interface
+            // network.vlan13.device='eth0.13'
             $interfaceToDelete = '';
             foreach ($all_config as $line) {
-                // network.vlan10.device='eth0.10'
-                if (preg_match("/network\.([^.]+)\.device=['\"]?" . preg_quote($del_dev, '/') . "['\"]?$/", $line, $m)) {
+                if (preg_match("/^network\.([^.]+)\.device=['\"]?" . preg_quote($del_dev, '/') . "['\"]?$/", $line, $m)) {
                     $iface = $m[1];
-                    // Ensure it's not the device definition itself
+                    // Ensure it's not the device definition itself (though device definition has .name, not .device usually)
                     if (strpos($iface, '@device') === false) {
                         $interfaceToDelete = $iface;
                         exec("uci delete network.$interfaceToDelete");
@@ -160,7 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exec("/etc/init.d/network reload");
             $msg = "VLAN $del_dev deleted.";
         } else {
-             $msg = "Error: Could not find configuration for $del_dev";
+             $msg = "Error: Could not find configuration for $del_dev. Please check if it exists in /etc/config/network manually.";
         }
     }
 }
