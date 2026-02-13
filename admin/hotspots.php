@@ -69,35 +69,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             // Wireless
             $ssid = escapeshellarg($_POST['ssid']);
-            $radio = escapeshellarg($_POST['radio']);
+            $radio_selection = $_POST['radio']; // Can be 'radio0', 'radio1', or 'dual_band'
             $ssid_display = $_POST['ssid'];
             
-            // Check for existing AP on this radio and remove it to prevent duplicates/conflicts
-            // if we want to "Replace" the ssid.
-            // However, OpenWrt supports multiple APs (SSIDs) on one radio.
-            // If the user wants to CHANGE the SSID, they should probably delete the old one or we implement edit.
-            // But the user request says "kung gusto ko palitan ang ssid dapat ay napapalitan ito".
-            // Since we are creating a NEW network interface 'hotspot_TIMESTAMP', this is technically adding a NEW SSID.
-            // If they reused the name, it's fine.
-            // If they want to "Update" an existing one, that's an "Edit" feature we haven't built yet.
-            // But to ensure the SSID is strictly followed for THIS new hotspot:
+            // Function to add wifi-iface
+            function addWifiIface($radio_dev, $ssid_val, $network_name) {
+                // Ensure radio is enabled and country set
+                exec("uci set wireless.$radio_dev.disabled='0'");
+                exec("uci set wireless.$radio_dev.country='PH'");
+                
+                // Add iface
+                exec("uci add wireless wifi-iface > /tmp/new_iface_id");
+                $id = trim(file_get_contents('/tmp/new_iface_id'));
+                exec("uci set wireless.$id.device=$radio_dev");
+                exec("uci set wireless.$id.mode='ap'");
+                exec("uci set wireless.$id.ssid=$ssid_val");
+                exec("uci set wireless.$id.network='$network_name'");
+                exec("uci set wireless.$id.encryption='none'");
+            }
             
-            // Wireless config attached to this network
-            exec("uci add wireless wifi-iface > /tmp/new_iface_id");
-            $id = trim(file_get_contents('/tmp/new_iface_id'));
-            exec("uci set wireless.$id.device=$radio");
-            exec("uci set wireless.$id.mode='ap'");
-            exec("uci set wireless.$id.ssid=$ssid");
-            exec("uci set wireless.$id.network='$name'");
-            exec("uci set wireless.$id.encryption='none'");
-            
-            // Force Enable Radio
-            exec("uci set wireless.$radio.disabled='0'");
-            // Set Country Code (PH for Philippines or US) to ensure 5GHz works or legal channels
-            exec("uci set wireless.$radio.country='PH'"); 
-            
-            // FIX: If radio was previously disabled or country not set, we need to commit these changes to the radio device itself
-            // The lines above set it in memory for the commit below.
+            if ($radio_selection === 'dual_band') {
+                // Add to BOTH radio0 and radio1
+                addWifiIface('radio0', $ssid, $name);
+                addWifiIface('radio1', $ssid, $name);
+                $ssid_display .= " (Dual Band)";
+            } else {
+                // Add to specific radio
+                $radio = escapeshellarg($radio_selection);
+                addWifiIface($radio_selection, $ssid, $name);
+            }
         }
         
         // --- 2. DHCP Configuration ---
@@ -286,8 +286,9 @@ foreach ($wifi_out as $line) {
             
             <label>Wireless Radio</label>
             <select name="radio" style="width:100%; padding: 10px; margin-bottom: 15px;">
+                <option value="dual_band">Dual Band (2.4GHz + 5GHz) - Band Steering</option>
                 <?php foreach ($radios as $r): ?>
-                    <option value="<?php echo $r; ?>"><?php echo $r; ?></option>
+                    <option value="<?php echo $r; ?>"><?php echo $r; ?> (Single Band)</option>
                 <?php endforeach; ?>
             </select>
         </div>
