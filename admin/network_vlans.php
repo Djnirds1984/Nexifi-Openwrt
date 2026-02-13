@@ -127,22 +127,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['delete_vlan'])) {
         $del_dev = $_POST['delete_vlan']; // Device name e.g. eth0.10
         
-        // 1. Delete Device
-        exec("uci show network | grep \".name='$del_dev'\"", $out);
-        if (!empty($out)) {
-            $section = explode('.', explode('=', $out[0])[0])[1];
-            exec("uci delete network.$section");
+        // Robust way to find the section
+        $sectionToDelete = '';
+        exec("uci show network", $all_config);
+        foreach ($all_config as $line) {
+             // Look for network.@device[X].name='eth0.10' OR network.dev_section.name='eth0.10'
+             if (preg_match("/network\.([^.]+)\.name='$del_dev'/", $line, $m)) {
+                 $sectionToDelete = $m[1];
+                 break; 
+             }
+        }
+        
+        if ($sectionToDelete) {
+            exec("uci delete network.$sectionToDelete");
             
-            // 2. Delete Logical Interface using this device
-            exec("uci show network | grep \".device='$del_dev'\"", $out_iface);
-            if (!empty($out_iface)) {
-                 $iface_section = explode('.', explode('=', $out_iface[0])[0])[1];
-                 exec("uci delete network.$iface_section");
+            // Find and delete associated interface
+            $interfaceToDelete = '';
+            foreach ($all_config as $line) {
+                // network.vlan10.device='eth0.10'
+                if (preg_match("/network\.([^.]+)\.device='$del_dev'/", $line, $m)) {
+                    $iface = $m[1];
+                    // Ensure it's not the device definition itself
+                    if (strpos($iface, '@device') === false) {
+                        $interfaceToDelete = $iface;
+                        exec("uci delete network.$interfaceToDelete");
+                    }
+                }
             }
 
             exec("uci commit network");
             exec("/etc/init.d/network reload");
-            $msg = "VLAN $del_dev and associated interface deleted.";
+            $msg = "VLAN $del_dev deleted.";
+        } else {
+             $msg = "Error: Could not find configuration for $del_dev";
         }
     }
 }
