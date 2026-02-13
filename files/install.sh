@@ -26,7 +26,8 @@ fi
 
 # Configure uhttpd to execute PHP
 uci set uhttpd.main.index_page='index.php'
-uci delete uhttpd.main.interpreter 2>/dev/null
+# Ensure PHP interpreter is set (remove if exists then add to avoid duplicates)
+uci -q del_list uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
 uci add_list uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
 uci commit uhttpd
 /etc/init.d/uhttpd restart
@@ -469,20 +470,20 @@ fi
 
 cat << 'EOF_INDEX_PHP' > /www/index.php
 <?php
-\$host = \$_SERVER['HTTP_HOST'];
+$host = $_SERVER['HTTP_HOST'];
 // Adjust these IPs to match your router's LAN IP
-\$router_ips = ['192.168.1.1', '10.0.0.1', 'openwrt.lan'];
+$router_ips = ['192.168.1.1', '10.0.0.1', 'openwrt.lan'];
 
 // Check if the request is for the router admin interface
-\$is_admin = false;
-foreach (\$router_ips as \$ip) {
-    if (strpos(\$host, \$ip) !== false) {
-        \$is_admin = true;
+$is_admin = false;
+foreach ($router_ips as $ip) {
+    if (strpos($host, $ip) !== false) {
+        $is_admin = true;
         break;
     }
 }
 
-if (!\$is_admin) {
+if (!$is_admin) {
     // Captive portal user
     header("Location: /pisowifi/");
     exit;
