@@ -19,7 +19,7 @@ $page = basename($_SERVER['PHP_SELF'], ".php");
         <ul class="nav-links">
             <li><a href="index.php" class="<?php echo $page == 'index' ? 'active' : ''; ?>">Dashboard</a></li>
             <li><a href="hotspots.php" class="<?php echo $page == 'hotspots' ? 'active' : ''; ?>">Hotspot Settings</a></li>
-            <li><a href="vlans.php" class="<?php echo $page == 'vlans' ? 'active' : ''; ?>">VLAN Settings</a></li>
+            <li><a href="network.php" class="<?php echo (strpos($page, 'network') === 0) ? 'active' : ''; ?>">Network</a></li>
             <li><a href="users.php" class="<?php echo $page == 'users' ? 'active' : ''; ?>">Users</a></li>
             <li><a href="sales.php" class="<?php echo $page == 'sales' ? 'active' : ''; ?>">Sales</a></li>
             <li><a href="status.php" class="<?php echo $page == 'status' ? 'active' : ''; ?>">System Status</a></li>

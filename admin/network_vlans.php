@@ -1,4 +1,13 @@
 <?php include 'header.php'; ?>
+
+<div class="card" style="margin-bottom: 20px;">
+    <div style="display: flex; gap: 10px;">
+        <a href="network.php" class="btn btn-secondary">Overview</a>
+        <a href="network_bridges.php" class="btn btn-secondary">Bridges</a>
+        <a href="network_vlans.php" class="btn btn-primary">VLANs</a>
+    </div>
+</div>
+
 <?php
 $msg = '';
 
