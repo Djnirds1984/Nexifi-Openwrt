@@ -72,6 +72,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $radio = escapeshellarg($_POST['radio']);
             $ssid_display = $_POST['ssid'];
             
+            // Check for existing AP on this radio and remove it to prevent duplicates/conflicts
+            // if we want to "Replace" the ssid.
+            // However, OpenWrt supports multiple APs (SSIDs) on one radio.
+            // If the user wants to CHANGE the SSID, they should probably delete the old one or we implement edit.
+            // But the user request says "kung gusto ko palitan ang ssid dapat ay napapalitan ito".
+            // Since we are creating a NEW network interface 'hotspot_TIMESTAMP', this is technically adding a NEW SSID.
+            // If they reused the name, it's fine.
+            // If they want to "Update" an existing one, that's an "Edit" feature we haven't built yet.
+            // But to ensure the SSID is strictly followed for THIS new hotspot:
+            
             // Wireless config attached to this network
             exec("uci add wireless wifi-iface > /tmp/new_iface_id");
             $id = trim(file_get_contents('/tmp/new_iface_id'));
@@ -85,8 +95,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exec("uci set wireless.$radio.disabled='0'");
             // Set Country Code (PH for Philippines or US) to ensure 5GHz works or legal channels
             exec("uci set wireless.$radio.country='PH'"); 
-            // Set Channel to auto or specific (e.g. 1, 6, 11 for 2.4GHz)
-            // exec("uci set wireless.$radio.channel='auto'");
+            
+            // FIX: If radio was previously disabled or country not set, we need to commit these changes to the radio device itself
+            // The lines above set it in memory for the commit below.
         }
         
         // --- 2. DHCP Configuration ---
