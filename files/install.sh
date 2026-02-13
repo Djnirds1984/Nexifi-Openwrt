@@ -7,9 +7,10 @@ echo "Updating package lists..."
 opkg update
 
 echo "Installing required packages (iptables, php, etc)..."
-# Install iptables (try nft variant first, fallback to legacy if needed, but usually iptables-nft covers it)
-# We also need php-cli for the backend service and php-cgi for the web portal
-opkg install iptables-nft php8-cli php8-mod-json php8-cgi
+# Install iptables modules for NAT and Conntrack, and PHP packages
+# iptables-mod-nat-extra is needed for REDIRECT target
+# iptables-mod-conntrack-extra is needed for conntrack match
+opkg install iptables-nft iptables-mod-nat-extra iptables-mod-conntrack-extra php8-cli php8-mod-json php8-cgi
 
 # Verify PHP installation
 if [ ! -x /usr/bin/php-cli ]; then
@@ -63,11 +64,11 @@ start() {
     iptables -N pisowifi_portal 2>/dev/null
 
     # Insert chains into FORWARD and PREROUTING
-    iptables -I FORWARD -j pisowifi_auth
-    iptables -t nat -I PREROUTING -j pisowifi_portal
+    iptables -C FORWARD -j pisowifi_auth 2>/dev/null || iptables -I FORWARD -j pisowifi_auth
+    iptables -t nat -C PREROUTING -j pisowifi_portal 2>/dev/null || iptables -t nat -I PREROUTING -j pisowifi_portal
 
-    # Allow established connections
-    iptables -A pisowifi_auth -m state --state RELATED,ESTABLISHED -j ACCEPT
+    # Allow established connections (use conntrack instead of state)
+    iptables -A pisowifi_auth -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 
     # Allow DNS
     iptables -A pisowifi_auth -p udp --dport 53 -j ACCEPT
@@ -152,18 +153,20 @@ function saveUsers($users) {
 
 function addFirewallRule($mac) {
     // Add rule to allow traffic for this MAC
-    exec("iptables -C pisowifi_auth -m mac --mac-source $mac -j ACCEPT 2>/dev/null", $output, $ret);
+    $safe_mac = escapeshellarg($mac);
+    exec("iptables -C pisowifi_auth -m mac --mac-source $safe_mac -j ACCEPT 2>/dev/null", $output, $ret);
     if ($ret !== 0) {
-        exec("iptables -I pisowifi_auth 1 -m mac --mac-source $mac -j ACCEPT");
-        exec("iptables -t nat -I pisowifi_portal 1 -m mac --mac-source $mac -j RETURN");
+        exec("iptables -I pisowifi_auth 1 -m mac --mac-source $safe_mac -j ACCEPT");
+        exec("iptables -t nat -I pisowifi_portal 1 -m mac --mac-source $safe_mac -j RETURN");
         logMsg("Added firewall rule for $mac");
     }
 }
 
 function removeFirewallRule($mac) {
     // Remove rule
-    exec("iptables -D pisowifi_auth -m mac --mac-source $mac -j ACCEPT 2>/dev/null");
-    exec("iptables -t nat -D pisowifi_portal -m mac --mac-source $mac -j RETURN 2>/dev/null");
+    $safe_mac = escapeshellarg($mac);
+    exec("iptables -D pisowifi_auth -m mac --mac-source $safe_mac -j ACCEPT 2>/dev/null");
+    exec("iptables -t nat -D pisowifi_portal -m mac --mac-source $safe_mac -j RETURN 2>/dev/null");
     logMsg("Removed firewall rule for $mac");
 }
 
