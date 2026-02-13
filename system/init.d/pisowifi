@@ -1,0 +1,70 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=10
+
+SERVICE_USE_PID=1
+SERVICE_WRITE_PID=1
+SERVICE_DAEMONIZE=1
+
+start() {
+    # Create iptables chain for pisowifi if not exists
+    iptables -N pisowifi_auth 2>/dev/null
+    iptables -t nat -N pisowifi_portal 2>/dev/null
+
+    # Insert chains into FORWARD and PREROUTING
+    iptables -C FORWARD -j pisowifi_auth 2>/dev/null || iptables -I FORWARD -j pisowifi_auth
+    iptables -t nat -C PREROUTING -j pisowifi_portal 2>/dev/null || iptables -t nat -I PREROUTING -j pisowifi_portal
+
+    # Allow established connections (use conntrack instead of state)
+    iptables -A pisowifi_auth -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+
+    # Allow DNS
+    iptables -A pisowifi_auth -p udp --dport 53 -j ACCEPT
+    iptables -A pisowifi_auth -p tcp --dport 53 -j ACCEPT
+
+    # Drop everything else by default (in pisowifi_auth chain, effectively blocking unauth users)
+    # Actually, we should only block unauthenticated users. 
+    # The authenticated users will be added to pisowifi_auth with ACCEPT rule by the PHP backend.
+    
+    # Redirect unauthenticated users to portal
+    # This rule redirects HTTP traffic from unauthenticated users to the portal
+    # We need a way to distinguish authenticated users. 
+    # The PHP backend will add MAC addresses to pisowifi_auth with RETURN or ACCEPT.
+    
+    # Redirect all HTTP traffic to local portal (uhttpd on port 80)
+    # But we need to exclude authenticated users.
+    # The strategy:
+    # 1. pisowifi_portal chain:
+    #    - If MAC is authenticated, RETURN (continue to normal routing/masquerading)
+    #    - Else, REDIRECT to port 80 (captive portal)
+    
+    # Clear old rules
+    iptables -F pisowifi_auth
+    iptables -t nat -F pisowifi_portal
+
+    # Add default rules
+    # Authenticated users will be inserted at the top of pisowifi_auth and pisowifi_portal by the backend.
+    
+    # Block unauthenticated users in FORWARD
+    iptables -A pisowifi_auth -j DROP
+
+    # Redirect unauthenticated users in PREROUTING (NAT)
+    iptables -t nat -A pisowifi_portal -p tcp --dport 80 -j REDIRECT --to-ports 80
+
+    # Start the backend monitor (PHP script)
+    # This script will manage the expiration of users and coin counting
+    service_start /usr/bin/php-cli /usr/bin/pisowifi-backend.php
+}
+
+stop() {
+    # Remove rules
+    iptables -D FORWARD -j pisowifi_auth 2>/dev/null
+    iptables -t nat -D PREROUTING -j pisowifi_portal 2>/dev/null
+    iptables -F pisowifi_auth
+    iptables -t nat -F pisowifi_portal
+    iptables -X pisowifi_auth
+    iptables -t nat -X pisowifi_portal
+
+    service_stop /usr/bin/php-cli /usr/bin/pisowifi-backend.php
+}
