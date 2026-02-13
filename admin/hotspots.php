@@ -61,20 +61,20 @@ function getHotspots() {
     foreach ($interfaces as $id => &$data) {
         // Get IP
         $ip_cmd = "uci get network.$id.ipaddr 2>/dev/null";
-        $data['ip'] = trim(shell_exec($ip_cmd));
+        $data['ip'] = trim((string)shell_exec($ip_cmd));
         
         // Get Device
         $dev_cmd = "uci get network.$id.device 2>/dev/null";
-        $data['device'] = trim(shell_exec($dev_cmd));
+        $data['device'] = trim((string)shell_exec($dev_cmd));
         if (!$data['device']) {
              // Try ifname
              $ifname_cmd = "uci get network.$id.ifname 2>/dev/null";
-             $data['device'] = trim(shell_exec($ifname_cmd));
+             $data['device'] = trim((string)shell_exec($ifname_cmd));
         }
 
         // Check DHCP
         $dhcp_check = "uci get dhcp.$id 2>/dev/null";
-        $dhcp_res = trim(shell_exec($dhcp_check));
+        $dhcp_res = trim((string)shell_exec($dhcp_check));
         
         if ($data['ip'] && $dhcp_res == 'dhcp') {
             $hotspots[] = $data;
@@ -122,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if (empty($fw_check)) {
                 exec("uci add firewall zone > /tmp/new_zone_id");
-                $zone_section = trim(file_get_contents('/tmp/new_zone_id'));
+                $zone_section = trim((string)file_get_contents('/tmp/new_zone_id'));
                 exec("uci set firewall.$zone_section.name='pisowifi'");
                 exec("uci set firewall.$zone_section.input='ACCEPT'"); // Captive portal needs input for DNS/HTTP
                 exec("uci set firewall.$zone_section.output='ACCEPT'");
@@ -131,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 // Forwarding to WAN
                 exec("uci add firewall forwarding > /tmp/new_fwd_id");
-                $fid = trim(file_get_contents('/tmp/new_fwd_id'));
+                $fid = trim((string)file_get_contents('/tmp/new_fwd_id'));
                 exec("uci set firewall.$fid.src='pisowifi'");
                 exec("uci set firewall.$fid.dest='wan'");
             } else {
