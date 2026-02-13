@@ -14,8 +14,9 @@ foreach ($router_ips as $ip) {
 
 if (!$is_admin) {
     // Captive portal user
-    // Use absolute URL to force captive portal detection on some devices
-    header("Location: http://10.0.0.1/pisowifi/");
+    // Return 302 Redirect to the portal
+    // This is the standard trigger for CNA (Captive Network Assistant)
+    header("Location: http://10.0.0.1/pisowifi/", true, 302);
     exit;
 }
 

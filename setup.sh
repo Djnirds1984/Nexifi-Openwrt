@@ -53,6 +53,7 @@ fi
 # 3. Configure uhttpd
 echo "Configuring web server..."
 uci set uhttpd.main.index_page='index.php'
+uci set uhttpd.main.error_page='/index.php'
 uci -q del_list uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
 uci add_list uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
 # Point uhttpd home to this directory if we want to serve directly from here?

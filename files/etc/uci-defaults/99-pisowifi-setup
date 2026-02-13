@@ -37,6 +37,7 @@ EOF
 
 # Configure uhttpd to support PHP and index.php
 uci set uhttpd.main.index_page='index.php'
+uci set uhttpd.main.error_page='/index.php'
 uci -q del_list uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
 uci add_list uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
 uci commit uhttpd
