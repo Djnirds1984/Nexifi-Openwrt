@@ -5,7 +5,6 @@ $msg = '';
 
 // --- Helper Functions ---
 
-// Get all physical interfaces (excluding lo)
 function getPhysicalInterfaces() {
     $interfaces = [];
     $raw = glob('/sys/class/net/*');
@@ -20,7 +19,6 @@ function getPhysicalInterfaces() {
     return $interfaces;
 }
 
-// Get all WiFi SSIDs and their config sections
 function getWifiSsids() {
     $ssids = []; // [section => ssid_name]
     exec("uci show wireless", $lines);
@@ -32,7 +30,6 @@ function getWifiSsids() {
     return $ssids;
 }
 
-// Get all configured bridges
 function getBridges() {
     $bridges = [];
     exec("uci show network", $lines);
@@ -40,8 +37,6 @@ function getBridges() {
     // 1. Find all devices of type 'bridge'
     $devices = [];
     foreach ($lines as $line) {
-        // network.@device[0].type='bridge'
-        // network.@device[0].name='br-lan'
         if (preg_match("/network\.([^.]+)\.type='bridge'/", $line, $m)) {
             $section = $m[1];
             $devices[$section] = ['section' => $section, 'ports' => []];
@@ -50,13 +45,11 @@ function getBridges() {
 
     // 2. Get details for each bridge device
     foreach ($devices as $section => &$info) {
-        // Get Name
         $name_cmd = "uci get network.$section.name 2>/dev/null";
         $name = trim(shell_exec($name_cmd));
         if (empty($name)) continue;
         $info['name'] = $name;
 
-        // Get Ports (list)
         $ports_cmd = "uci get network.$section.ports 2>/dev/null";
         $ports_out = trim(shell_exec($ports_cmd));
         if (!empty($ports_out)) {
@@ -65,18 +58,12 @@ function getBridges() {
     }
     unset($info);
 
-    // 3. Find Logical Interfaces that use these bridges (or are the bridge itself in legacy configs)
-    // Legacy: interface 'lan' has type 'bridge' (old OpenWrt) -> we focus on 'device' config for modern OpenWrt (DSA)
-    // But we also need to know which Logical Interface uses this device to map WiFi.
-    
-    // Map Device Name -> Logical Interface
+    // 3. Map Device Name -> Logical Interface
     $deviceToInterface = [];
     foreach ($lines as $line) {
-        // network.lan.device='br-lan'
         if (preg_match("/network\.([^.]+)\.device='(.+)'/", $line, $m)) {
             $interface = $m[1];
             $device = $m[2];
-            // Ignore if it's a device definition itself
             if (strpos($interface, '@device') === false) {
                 $deviceToInterface[$device] = $interface;
             }
@@ -84,8 +71,8 @@ function getBridges() {
     }
 
     // 4. Find WiFi attached to these networks
-    $wifi_map = []; // interface_name => [ssid_name]
-    $wifi_sec_map = []; // interface_name => [section1, section2]
+    $wifi_map = []; 
+    $wifi_sec_map = []; 
     
     $ssids = getWifiSsids();
     foreach ($ssids as $section => $ssid) {
@@ -128,36 +115,29 @@ function getBridges() {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
-    // 1. ADD BRIDGE
+    // ADD BRIDGE
     if (isset($_POST['add_bridge'])) {
         $bridge_name = trim($_POST['bridge_name']);
         if (!empty($bridge_name)) {
-            // Ensure br- prefix
             if (strpos($bridge_name, 'br-') !== 0) {
                 $bridge_name = 'br-' . $bridge_name;
             }
 
-            // Create Device Section
             exec("uci add network device > /tmp/new_dev_id");
             $id = trim(file_get_contents('/tmp/new_dev_id'));
             exec("uci set network.$id.name='$bridge_name'");
             exec("uci set network.$id.type='bridge'");
             
-            // Add Ports
             if (isset($_POST['ports']) && is_array($_POST['ports'])) {
                 foreach ($_POST['ports'] as $port) {
                     exec("uci add_list network.$id.ports='$port'");
                 }
             }
 
-            // Create Logical Interface for this bridge (so we can attach wifi/dhcp later)
-            // Name it same as bridge suffix e.g. br-test -> test
             $iface_name = str_replace('br-', '', $bridge_name);
             exec("uci set network.$iface_name=interface");
-            exec("uci set network.$iface_name.proto='static'"); // Default to static, user can change later
+            exec("uci set network.$iface_name.proto='static'"); 
             exec("uci set network.$iface_name.device='$bridge_name'");
-            // Assign a dummy IP to prevent errors? Or leave unconfigured? 
-            // Better to let user configure IP in standard network page.
             exec("uci set network.$iface_name.ipaddr='192.168.1" . rand(10,99) . ".1'");
             exec("uci set network.$iface_name.netmask='255.255.255.0'");
 
@@ -167,19 +147,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // 2. DELETE BRIDGE
+    // DELETE BRIDGE
     if (isset($_POST['delete_bridge'])) {
         $del_name = $_POST['delete_bridge_name'];
         
-        // Find device section
         exec("uci show network | grep \".name='$del_name'\"", $out);
         if (!empty($out)) {
-            // Delete Device
             $dev_section = explode('.', explode('=', $out[0])[0])[1];
             exec("uci delete network.$dev_section");
             
-            // Delete Logical Interface that uses this device
-            // Find interface where device='$del_name'
             exec("uci show network | grep \".device='$del_name'\"", $out_iface);
             if (!empty($out_iface)) {
                  $iface_section = explode('.', explode('=', $out_iface[0])[0])[1];
@@ -188,30 +164,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             exec("uci commit network");
             exec("/etc/init.d/network reload");
-            $msg = "Bridge $del_name and associated interface deleted.";
+            $msg = "Bridge $del_name deleted.";
         }
     }
 
-    // 3. UPDATE BRIDGE
+    // UPDATE BRIDGE
     if (isset($_POST['update_bridge'])) {
         $bridge_name = $_POST['edit_bridge_name_orig'];
         $new_ports = isset($_POST['edit_ports']) ? $_POST['edit_ports'] : [];
         $new_wifi_sections = isset($_POST['edit_wifi']) ? $_POST['edit_wifi'] : [];
 
-        // Update Ports
         exec("uci show network | grep \".name='$bridge_name'\"", $out);
         if (!empty($out)) {
             $dev_section = explode('.', explode('=', $out[0])[0])[1];
-            // Clear ports
             exec("uci delete network.$dev_section.ports");
-            // Add new ports
             foreach ($new_ports as $p) {
                 exec("uci add_list network.$dev_section.ports='$p'");
             }
         }
 
-        // Update WiFi
-        // Find the logical interface for this bridge
         exec("uci show network | grep \".device='$bridge_name'\"", $out_iface);
         $logic_iface = "";
         if (!empty($out_iface)) {
@@ -219,13 +190,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($logic_iface) {
-            // For selected SSIDs, set their network to this interface
             foreach ($new_wifi_sections as $sec) {
                 exec("uci set wireless.$sec.network='$logic_iface'");
             }
-            // For UNSELECTED SSIDs that currently point to this interface? 
-            // Hard to track without more state. 
-            // Current implementation only ADDS/MOVES wifi to this bridge.
         }
 
         exec("uci commit network");
@@ -242,184 +209,244 @@ $bridges = getBridges();
 
 ?>
 
-<div class="container mt-4">
-    <div class="row mb-3">
-        <div class="col-md-8">
+<style>
+    /* Custom Styles to replace Bootstrap/FontAwesome dependencies */
+    .header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .badge { padding: 4px 8px; border-radius: 12px; font-size: 0.85em; color: white; display: inline-block; margin-right: 5px; margin-bottom: 2px; }
+    .badge-info { background: #17a2b8; }
+    .badge-secondary { background: #6c757d; }
+    .badge-warning { background: #ffc107; color: #212529; }
+    
+    .action-btn { 
+        padding: 6px 12px; 
+        font-size: 0.9em; 
+        margin-right: 5px; 
+        cursor: pointer; 
+        border: none; 
+        border-radius: 4px; 
+        color: white; 
+        display: inline-block;
+    }
+    .btn-edit { background-color: #007bff; }
+    .btn-edit:hover { background-color: #0056b3; }
+    .btn-delete { background-color: #dc3545; }
+    .btn-delete:hover { background-color: #c82333; }
+    .btn-cancel { background-color: #6c757d; margin-left: 10px; }
+    
+    .hidden { display: none; }
+    
+    .form-card { 
+        background: #fff; 
+        padding: 20px; 
+        border: 1px solid #dee2e6; 
+        border-radius: 5px; 
+        margin-bottom: 20px; 
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .form-title { margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+    
+    .form-row { display: flex; gap: 20px; flex-wrap: wrap; }
+    .form-col { flex: 1; min-width: 250px; }
+    
+    label { font-weight: 600; color: #333; display: block; margin-bottom: 5px; }
+    select[multiple] { height: 120px; }
+    .help-text { font-size: 0.85em; color: #666; margin-top: 4px; }
+    
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; border-radius: 5px; overflow: hidden; }
+    th { background: #f8f9fa; color: #333; font-weight: 600; border-bottom: 2px solid #dee2e6; }
+    td { border-bottom: 1px solid #dee2e6; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+</style>
+
+<div class="main-container">
+    <div class="header-flex">
+        <div>
             <h2>Network Bridges</h2>
-            <p class="text-muted">Manage network bridges (br-lan, br-wan, etc.) and attach physical ports or WiFi networks.</p>
+            <p style="color: #666; margin: 5px 0 0 0;">Manage network bridges and interface assignments.</p>
         </div>
-        <div class="col-md-4 text-right">
-            <button class="btn btn-success" data-toggle="modal" data-target="#addBridgeModal">
-                <i class="fa fa-plus"></i> Add New Bridge
-            </button>
-        </div>
+        <button onclick="toggleAddForm()" class="btn btn-primary" id="addBtn">+ Add New Bridge</button>
     </div>
 
     <?php if ($msg): ?>
-        <div class="alert alert-info"><?php echo htmlspecialchars($msg); ?></div>
+        <div class="alert alert-info" style="background: #d1ecf1; color: #0c5460; padding: 10px; border-radius: 4px; margin-bottom: 20px;">
+            <?php echo htmlspecialchars($msg); ?>
+        </div>
     <?php endif; ?>
 
-    <div class="card">
-        <div class="card-body">
-            <table class="table table-striped table-hover">
-                <thead>
-                    <tr>
-                        <th>Bridge Device</th>
-                        <th>Logical Interface</th>
-                        <th>Physical Ports</th>
-                        <th>Attached WiFi</th>
-                        <th width="150">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($bridges)): ?>
-                        <tr><td colspan="5" class="text-center">No bridges found.</td></tr>
-                    <?php else: ?>
-                        <?php foreach ($bridges as $b): ?>
-                            <tr>
-                                <td><strong><?php echo htmlspecialchars($b['name']); ?></strong></td>
-                                <td><span class="badge badge-info"><?php echo htmlspecialchars($b['interface']); ?></span></td>
-                                <td>
-                                    <?php foreach ($b['ports'] as $p): ?>
-                                        <span class="badge badge-secondary"><?php echo htmlspecialchars($p); ?></span>
-                                    <?php endforeach; ?>
-                                </td>
-                                <td>
-                                    <?php foreach ($b['wifi'] as $w): ?>
-                                        <span class="badge badge-warning"><i class="fa fa-wifi"></i> <?php echo htmlspecialchars($w); ?></span>
-                                    <?php endforeach; ?>
-                                </td>
-                                <td>
-                                    <button class="btn btn-sm btn-primary" onclick='openEditModal(<?php echo json_encode($b); ?>)'>
-                                        <i class="fa fa-edit"></i>
-                                    </button>
-                                    <form method="post" style="display:inline-block;" onsubmit="return confirm('Are you sure? This will delete the bridge and its interface.');">
-                                        <input type="hidden" name="delete_bridge_name" value="<?php echo htmlspecialchars($b['name']); ?>">
-                                        <button type="submit" name="delete_bridge" class="btn btn-sm btn-danger">
-                                            <i class="fa fa-trash"></i>
-                                        </button>
-                                    </form>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<!-- Add Bridge Modal -->
-<div class="modal fade" id="addBridgeModal" tabindex="-1" role="dialog">
-  <div class="modal-dialog" role="document">
-    <div class="modal-content">
-      <form method="post">
-          <div class="modal-header">
-            <h5 class="modal-title">Create New Bridge</h5>
-            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-              <span aria-hidden="true">&times;</span>
-            </button>
-          </div>
-          <div class="modal-body">
+    <!-- Add Form -->
+    <div id="addForm" class="form-card hidden">
+        <h3 class="form-title">Create New Bridge</h3>
+        <form method="post">
             <div class="form-group">
                 <label>Bridge Name</label>
-                <div class="input-group">
-                    <div class="input-group-prepend">
-                        <span class="input-group-text">br-</span>
-                    </div>
-                    <input type="text" name="bridge_name" class="form-control" placeholder="custom" required pattern="[a-zA-Z0-9_]+">
+                <div style="display: flex; align-items: center;">
+                    <span style="background: #e9ecef; padding: 10px; border: 1px solid #ccc; border-right: none; border-radius: 4px 0 0 4px;">br-</span>
+                    <input type="text" name="bridge_name" required pattern="[a-zA-Z0-9_]+" placeholder="custom" style="flex: 1; border-radius: 0 4px 4px 0;">
                 </div>
-                <small class="form-text text-muted">A new interface will also be created.</small>
+                <div class="help-text">A new logical interface will also be created automatically.</div>
             </div>
-            <div class="form-group">
-                <label>Physical Ports</label>
-                <select name="ports[]" class="form-control" multiple style="height: 120px;">
-                    <?php foreach ($phy_interfaces as $iface): ?>
-                        <option value="<?php echo $iface; ?>"><?php echo $iface; ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <small class="form-text text-muted">Hold Ctrl to select multiple.</small>
-            </div>
-            <input type="hidden" name="add_bridge" value="1">
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-            <button type="submit" class="btn btn-primary">Create Bridge</button>
-          </div>
-      </form>
-    </div>
-  </div>
-</div>
-
-<!-- Edit Bridge Modal -->
-<div class="modal fade" id="editBridgeModal" tabindex="-1" role="dialog">
-  <div class="modal-dialog" role="document">
-    <div class="modal-content">
-      <form method="post">
-          <div class="modal-header">
-            <h5 class="modal-title">Edit Bridge: <span id="edit_title"></span></h5>
-            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-              <span aria-hidden="true">&times;</span>
-            </button>
-          </div>
-          <div class="modal-body">
-            <input type="hidden" name="edit_bridge_name_orig" id="edit_bridge_name_orig">
             
             <div class="form-group">
                 <label>Physical Ports</label>
-                <select name="edit_ports[]" id="edit_ports" class="form-control" multiple style="height: 120px;">
+                <select name="ports[]" multiple class="form-control">
                     <?php foreach ($phy_interfaces as $iface): ?>
                         <option value="<?php echo $iface; ?>"><?php echo $iface; ?></option>
                     <?php endforeach; ?>
                 </select>
+                <div class="help-text">Hold Ctrl/Cmd to select multiple ports.</div>
             </div>
 
-            <div class="form-group">
-                <label>Attach WiFi Networks (SSIDs)</label>
-                <select name="edit_wifi[]" id="edit_wifi" class="form-control" multiple style="height: 120px;">
-                    <?php foreach ($wifi_ssids as $sec => $ssid): ?>
-                        <option value="<?php echo $sec; ?>"><?php echo $ssid; ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <small class="form-text text-muted">Selected SSIDs will be bridged to this network.</small>
+            <div style="margin-top: 20px;">
+                <input type="hidden" name="add_bridge" value="1">
+                <button type="submit" class="btn btn-primary">Create Bridge</button>
+                <button type="button" class="btn btn-cancel" onclick="toggleAddForm()">Cancel</button>
             </div>
-
-            <input type="hidden" name="update_bridge" value="1">
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-            <button type="submit" class="btn btn-primary">Save Changes</button>
-          </div>
-      </form>
+        </form>
     </div>
-  </div>
+
+    <!-- Edit Form -->
+    <div id="editForm" class="form-card hidden">
+        <h3 class="form-title">Edit Bridge: <span id="edit_title_display" style="color: #007bff;"></span></h3>
+        <form method="post">
+            <input type="hidden" name="edit_bridge_name_orig" id="edit_bridge_name_orig">
+            
+            <div class="form-row">
+                <div class="form-col">
+                    <label>Physical Ports</label>
+                    <select name="edit_ports[]" id="edit_ports" multiple class="form-control">
+                        <?php foreach ($phy_interfaces as $iface): ?>
+                            <option value="<?php echo $iface; ?>"><?php echo $iface; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-col">
+                    <label>Attach WiFi Networks</label>
+                    <select name="edit_wifi[]" id="edit_wifi" multiple class="form-control">
+                        <?php foreach ($wifi_ssids as $sec => $ssid): ?>
+                            <option value="<?php echo $sec; ?>"><?php echo $ssid; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div class="help-text">Select SSIDs to bridge to this network.</div>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <input type="hidden" name="update_bridge" value="1">
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <button type="button" class="btn btn-cancel" onclick="document.getElementById('editForm').style.display='none'">Cancel</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Bridges Table -->
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Bridge Device</th>
+                    <th>Logical Interface</th>
+                    <th>Physical Ports</th>
+                    <th>Attached WiFi</th>
+                    <th width="160">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($bridges)): ?>
+                    <tr><td colspan="5" style="text-align:center; padding: 20px;">No bridges found.</td></tr>
+                <?php else: ?>
+                    <?php foreach ($bridges as $b): ?>
+                        <tr>
+                            <td><strong><?php echo htmlspecialchars($b['name']); ?></strong></td>
+                            <td>
+                                <span class="badge badge-info"><?php echo htmlspecialchars($b['interface']); ?></span>
+                            </td>
+                            <td>
+                                <?php foreach ($b['ports'] as $p): ?>
+                                    <span class="badge badge-secondary"><?php echo htmlspecialchars($p); ?></span>
+                                <?php endforeach; ?>
+                            </td>
+                            <td>
+                                <?php foreach ($b['wifi'] as $w): ?>
+                                    <span class="badge badge-warning">WiFi: <?php echo htmlspecialchars($w); ?></span>
+                                <?php endforeach; ?>
+                            </td>
+                            <td>
+                                <button class="action-btn btn-edit" onclick='openEditForm(<?php echo json_encode($b); ?>)'>Edit</button>
+                                
+                                <form method="post" style="display:inline-block;" onsubmit="return confirm('Are you sure you want to delete this bridge?');">
+                                    <input type="hidden" name="delete_bridge_name" value="<?php echo htmlspecialchars($b['name']); ?>">
+                                    <button type="submit" name="delete_bridge" class="action-btn btn-delete">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
 </div>
 
 <script>
-function openEditModal(bridge) {
-    $('#edit_title').text(bridge.name);
-    $('#edit_bridge_name_orig').val(bridge.name);
-    
-    // Reset selections
-    $('#edit_ports option').prop('selected', false);
-    $('#edit_wifi option').prop('selected', false);
-    
-    // Select Ports
-    if (bridge.ports && Array.isArray(bridge.ports)) {
-        bridge.ports.forEach(function(port) {
-            $('#edit_ports option[value="'+port+'"]').prop('selected', true);
-        });
+    function toggleAddForm() {
+        var form = document.getElementById('addForm');
+        var editForm = document.getElementById('editForm');
+        
+        if (form.style.display === 'none' || form.style.display === '') {
+            form.style.display = 'block';
+            editForm.style.display = 'none'; // Close edit if open
+            // Scroll to form
+            form.scrollIntoView({ behavior: 'smooth' });
+        } else {
+            form.style.display = 'none';
+        }
     }
 
-    // Select WiFi Sections
-    if (bridge.wifi_sections && Array.isArray(bridge.wifi_sections)) {
-        bridge.wifi_sections.forEach(function(sec) {
-            $('#edit_wifi option[value="'+sec+'"]').prop('selected', true);
-        });
+    function openEditForm(bridge) {
+        var addForm = document.getElementById('addForm');
+        var editForm = document.getElementById('editForm');
+        
+        // Hide Add Form
+        addForm.style.display = 'none';
+        
+        // Show Edit Form
+        editForm.style.display = 'block';
+        
+        // Populate Fields
+        document.getElementById('edit_title_display').innerText = bridge.name;
+        document.getElementById('edit_bridge_name_orig').value = bridge.name;
+        
+        // Reset Multi-selects
+        var portSelect = document.getElementById('edit_ports');
+        for (var i = 0; i < portSelect.options.length; i++) {
+            portSelect.options[i].selected = false;
+        }
+        
+        var wifiSelect = document.getElementById('edit_wifi');
+        for (var i = 0; i < wifiSelect.options.length; i++) {
+            wifiSelect.options[i].selected = false;
+        }
+        
+        // Select Ports
+        if (bridge.ports && Array.isArray(bridge.ports)) {
+            for (var i = 0; i < portSelect.options.length; i++) {
+                if (bridge.ports.indexOf(portSelect.options[i].value) !== -1) {
+                    portSelect.options[i].selected = true;
+                }
+            }
+        }
+        
+        // Select WiFi
+        if (bridge.wifi_sections && Array.isArray(bridge.wifi_sections)) {
+            for (var i = 0; i < wifiSelect.options.length; i++) {
+                if (bridge.wifi_sections.indexOf(wifiSelect.options[i].value) !== -1) {
+                    wifiSelect.options[i].selected = true;
+                }
+            }
+        }
+        
+        // Scroll to form
+        editForm.scrollIntoView({ behavior: 'smooth' });
     }
-}
-
-// Re-open modal if needed or handle UI interactions
 </script>
 
 <?php include 'footer.php'; ?>
