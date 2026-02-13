@@ -168,11 +168,20 @@ cat << 'EOF_BACKEND' > /usr/bin/pisowifi-backend.php
 $configFile = '/etc/config/pisowifi';
 $usersFile = '/tmp/pisowifi_users.json';
 $coinFile = '/tmp/pisowifi_coin'; // Simulate coin drop by writing to this file
+$kickFile = '/tmp/pisowifi_kick'; // File to request user disconnection
+$salesFile = '/etc/pisowifi_sales.csv'; // Persistent sales log
 $logFile = '/tmp/pisowifi.log';
 
 function logMsg($msg) {
     global $logFile;
     file_put_contents($logFile, date('Y-m-d H:i:s') . " - $msg\n", FILE_APPEND);
+}
+
+function logSale($mac, $amount, $minutes) {
+    global $salesFile;
+    $date = date('Y-m-d H:i:s');
+    $line = "$date,$mac,$amount,$minutes\n";
+    file_put_contents($salesFile, $line, FILE_APPEND);
 }
 
 function getUsers() {
@@ -219,6 +228,21 @@ function getUCIConfig($option, $default) {
 logMsg("Pisowifi backend started.");
 
 while (true) {
+    // 0. Check for kick requests
+    if (file_exists($kickFile)) {
+        $kickMac = trim(file_get_contents($kickFile));
+        unlink($kickFile);
+        if ($kickMac) {
+            $users = getUsers();
+            if (isset($users[$kickMac])) {
+                removeFirewallRule($kickMac);
+                unset($users[$kickMac]);
+                saveUsers($users);
+                logMsg("Kicked user $kickMac");
+            }
+        }
+    }
+
     // 1. Check for new coins
     if (file_exists($coinFile)) {
         $coinData = file_get_contents($coinFile);
@@ -252,6 +276,7 @@ while (true) {
             
             saveUsers($users);
             addFirewallRule($mac);
+            logSale($mac, $amount, $minutesToAdd);
             logMsg("Added $minutesToAdd mins for $mac. New expiry: " . date('Y-m-d H:i:s', $users[$mac]['expiry']));
         }
     }
@@ -392,93 +417,336 @@ function index()
 end
 EOF_CONTROLLER
 
-# 6. /www/pisowifi/admin.php
-cat << 'EOF_ADMIN' > /www/pisowifi/admin.php
+# 6. Admin Panel (Multi-file)
+mkdir -p /www/pisowifi/admin
+mkdir -p /www/pisowifi/assets
+
+# Create Style
+cat << 'EOF_CSS' > /www/pisowifi/assets/style.css
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f6f9; margin: 0; display: flex; height: 100vh; }
+.sidebar { width: 250px; background: #343a40; color: #fff; display: flex; flex-direction: column; }
+.sidebar-header { padding: 20px; text-align: center; font-size: 1.5em; font-weight: bold; background: #212529; }
+.nav-links { list-style: none; padding: 0; margin: 0; flex: 1; }
+.nav-links li a { display: block; padding: 15px 20px; color: #c2c7d0; text-decoration: none; border-bottom: 1px solid #4b545c; }
+.nav-links li a:hover, .nav-links li a.active { background: #007bff; color: white; }
+.main-content { flex: 1; padding: 20px; overflow-y: auto; }
+.card { background: white; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px; }
+.card h3 { margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 10px; color: #333; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+.stat-box { background: #007bff; color: white; padding: 20px; border-radius: 5px; text-align: center; }
+.stat-box.green { background: #28a745; }
+.stat-box.orange { background: #fd7e14; }
+.stat-number { font-size: 2em; font-weight: bold; }
+table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+th { background-color: #f8f9fa; }
+.btn { padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; color: white; text-decoration: none; display: inline-block; }
+.btn-danger { background-color: #dc3545; }
+.btn-primary { background-color: #007bff; }
+input[type="text"], input[type="number"], input[type="password"] { width: 100%; padding: 10px; margin: 5px 0 15px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+.alert { padding: 15px; margin-bottom: 20px; border: 1px solid transparent; border-radius: 4px; }
+.alert-success { color: #155724; background-color: #d4edda; border-color: #c3e6cb; }
+.alert-danger { color: #721c24; background-color: #f8d7da; border-color: #f5c6cb; }
+EOF_CSS
+
+# Create Admin Header
+cat << 'EOF_HEADER' > /www/pisowifi/admin/header.php
 <?php
-// admin.php - Pisowifi Administration
-
-$configFile = 'pisowifi'; // UCI config name
-
-// Helper to get config via UCI
-function getConfig() {
-    global $configFile;
-    $output = [];
-    exec("uci show $configFile", $output);
-    $config = [];
-    foreach ($output as $line) {
-        if (preg_match("/$configFile\.general\.(\w+)='?(.*?)'?$/", $line, $matches)) {
-            $config[$matches[1]] = $matches[2];
-        }
-    }
-    return $config;
+session_start();
+if (!isset($_SESSION['loggedin'])) {
+    header('Location: login.php');
+    exit;
 }
-
-// Helper to update config via UCI
-function updateConfig($key, $value) {
-    global $configFile;
-    // Sanitize input
-    $key = escapeshellarg($key);
-    $value = escapeshellarg($value);
-    
-    // Set value
-    exec("uci set $configFile.general.$key=$value");
-    exec("uci commit $configFile");
-}
-
-$message = "";
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['coin_value'])) {
-        updateConfig('coin_value', $_POST['coin_value']);
-    }
-    if (isset($_POST['time_per_coin'])) {
-        updateConfig('time_per_coin', $_POST['time_per_coin']);
-    }
-    $message = "Configuration saved.";
-}
-
-$config = getConfig();
+$page = basename($_SERVER['PHP_SELF'], ".php");
 ?>
 <!DOCTYPE html>
 <html>
 <head>
     <title>Pisowifi Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="sidebar">
+        <div class="sidebar-header">Pisowifi Panel</div>
+        <ul class="nav-links">
+            <li><a href="index.php" class="<?php echo $page == 'index' ? 'active' : ''; ?>">Dashboard</a></li>
+            <li><a href="users.php" class="<?php echo $page == 'users' ? 'active' : ''; ?>">Users</a></li>
+            <li><a href="sales.php" class="<?php echo $page == 'sales' ? 'active' : ''; ?>">Sales</a></li>
+            <li><a href="settings.php" class="<?php echo $page == 'settings' ? 'active' : ''; ?>">Settings</a></li>
+            <li><a href="logout.php">Logout</a></li>
+        </ul>
+    </div>
+    <div class="main-content">
+EOF_HEADER
+
+# Create Admin Footer
+cat << 'EOF_FOOTER' > /www/pisowifi/admin/footer.php
+    </div>
+</body>
+</html>
+EOF_FOOTER
+
+# Create Login
+cat << 'EOF_LOGIN' > /www/pisowifi/admin/login.php
+<?php
+session_start();
+if (isset($_SESSION['loggedin'])) {
+    header('Location: index.php');
+    exit;
+}
+$error = '';
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $user = $_POST['username'];
+    $pass = $_POST['password'];
+    // Default credentials: admin / admin
+    if ($user === 'admin' && $pass === 'admin') {
+        $_SESSION['loggedin'] = true;
+        header('Location: index.php');
+        exit;
+    } else {
+        $error = 'Invalid credentials';
+    }
+}
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login - Pisowifi</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input { padding: 8px; width: 100%; max-width: 300px; }
-        button { padding: 10px 20px; background-color: #007bff; color: white; border: none; cursor: pointer; }
-        button:hover { background-color: #0056b3; }
-        .message { color: green; margin-bottom: 20px; padding: 10px; background-color: #d4edda; border: 1px solid #c3e6cb; }
-        a { text-decoration: none; color: #007bff; }
+        body { font-family: sans-serif; background: #e9ecef; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-box { background: white; padding: 40px; border-radius: 5px; box-shadow: 0 0 15px rgba(0,0,0,0.1); width: 300px; }
+        h2 { text-align: center; margin-top: 0; }
+        input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .error { color: red; text-align: center; margin-bottom: 10px; }
     </style>
 </head>
 <body>
-    <h1>Pisowifi Administration</h1>
+    <div class="login-box">
+        <h2>Admin Login</h2>
+        <?php if ($error): ?><div class="error"><?php echo $error; ?></div><?php endif; ?>
+        <form method="post">
+            <input type="text" name="username" placeholder="Username" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit">Login</button>
+        </form>
+    </div>
+</body>
+</html>
+EOF_LOGIN
+
+# Create Logout
+cat << 'EOF_LOGOUT' > /www/pisowifi/admin/logout.php
+<?php
+session_start();
+session_destroy();
+header('Location: login.php');
+?>
+EOF_LOGOUT
+
+# Create Dashboard
+cat << 'EOF_DASHBOARD' > /www/pisowifi/admin/index.php
+<?php include 'header.php'; ?>
+<?php
+$users_file = '/tmp/pisowifi_users.json';
+$active_users = 0;
+if (file_exists($users_file)) {
+    $users = json_decode(file_get_contents($users_file), true);
+    $active_users = count($users);
+}
+
+// Calculate sales today
+$sales_file = '/etc/pisowifi_sales.csv';
+$sales_today = 0;
+$today = date('Y-m-d');
+if (file_exists($sales_file)) {
+    $lines = file($sales_file);
+    foreach ($lines as $line) {
+        $parts = explode(',', $line);
+        if (count($parts) >= 3 && strpos($parts[0], $today) === 0) {
+            $sales_today += floatval($parts[2]);
+        }
+    }
+}
+?>
+
+<h2>Dashboard</h2>
+<div class="stats-grid">
+    <div class="stat-box">
+        <div class="stat-number"><?php echo $active_users; ?></div>
+        <div>Active Users</div>
+    </div>
+    <div class="stat-box green">
+        <div class="stat-number">₱<?php echo number_format($sales_today, 2); ?></div>
+        <div>Sales Today</div>
+    </div>
+    <div class="stat-box orange">
+        <div class="stat-number">OK</div>
+        <div>System Status</div>
+    </div>
+</div>
+
+<div class="card" style="margin-top: 20px;">
+    <h3>Quick Actions</h3>
+    <p>Use the sidebar to manage users, view sales logs, or change settings.</p>
+</div>
+
+<?php include 'footer.php'; ?>
+EOF_DASHBOARD
+
+# Create Users Page
+cat << 'EOF_USERS' > /www/pisowifi/admin/users.php
+<?php include 'header.php'; ?>
+<?php
+if (isset($_POST['kick'])) {
+    $kick_mac = $_POST['kick'];
+    file_put_contents('/tmp/pisowifi_kick', $kick_mac);
+    // Wait a bit for backend to process
+    sleep(1);
+}
+
+$users_file = '/tmp/pisowifi_users.json';
+$users = [];
+if (file_exists($users_file)) {
+    $users = json_decode(file_get_contents($users_file), true);
+}
+?>
+
+<div class="card">
+    <h3>Active Users</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>MAC Address</th>
+                <th>Expires At</th>
+                <th>Time Remaining</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if (empty($users)): ?>
+                <tr><td colspan="4" style="text-align:center;">No active users</td></tr>
+            <?php else: ?>
+                <?php foreach ($users as $mac => $info): ?>
+                <tr>
+                    <td><?php echo $mac; ?></td>
+                    <td><?php echo date('Y-m-d H:i:s', $info['expiry']); ?></td>
+                    <td><?php echo gmdate("H:i:s", max(0, $info['expiry'] - time())); ?></td>
+                    <td>
+                        <form method="post" style="display:inline;">
+                            <input type="hidden" name="kick" value="<?php echo $mac; ?>">
+                            <button type="submit" class="btn btn-danger">Disconnect</button>
+                        </form>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </tbody>
+    </table>
+</div>
+
+<?php include 'footer.php'; ?>
+EOF_USERS
+
+# Create Sales Page
+cat << 'EOF_SALES' > /www/pisowifi/admin/sales.php
+<?php include 'header.php'; ?>
+<?php
+$sales_file = '/etc/pisowifi_sales.csv';
+$sales = [];
+if (file_exists($sales_file)) {
+    $lines = array_reverse(file($sales_file)); // Newest first
+    foreach ($lines as $line) {
+        $parts = explode(',', trim($line));
+        if (count($parts) >= 4) {
+            $sales[] = [
+                'date' => $parts[0],
+                'mac' => $parts[1],
+                'amount' => $parts[2],
+                'minutes' => $parts[3]
+            ];
+        }
+    }
+}
+// Simple pagination or limit
+$sales = array_slice($sales, 0, 50);
+?>
+
+<div class="card">
+    <h3>Sales Log (Last 50)</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>MAC Address</th>
+                <th>Amount</th>
+                <th>Minutes Added</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if (empty($sales)): ?>
+                <tr><td colspan="4" style="text-align:center;">No sales recorded yet</td></tr>
+            <?php else: ?>
+                <?php foreach ($sales as $sale): ?>
+                <tr>
+                    <td><?php echo $sale['date']; ?></td>
+                    <td><?php echo $sale['mac']; ?></td>
+                    <td>₱<?php echo $sale['amount']; ?></td>
+                    <td><?php echo $sale['minutes']; ?></td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </tbody>
+    </table>
+</div>
+
+<?php include 'footer.php'; ?>
+EOF_SALES
+
+# Create Settings Page
+cat << 'EOF_SETTINGS' > /www/pisowifi/admin/settings.php
+<?php include 'header.php'; ?>
+<?php
+$configFile = 'pisowifi';
+$msg = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $coin_val = escapeshellarg($_POST['coin_value']);
+    $time_val = escapeshellarg($_POST['time_per_coin']);
     
-    <?php if ($message): ?>
-        <div class="message"><?php echo htmlspecialchars($message); ?></div>
+    exec("uci set $configFile.general.coin_value=$coin_val");
+    exec("uci set $configFile.general.time_per_coin=$time_val");
+    exec("uci commit $configFile");
+    $msg = "Settings saved successfully.";
+}
+
+// Read current config
+exec("uci get $configFile.general.coin_value 2>/dev/null", $o1);
+exec("uci get $configFile.general.time_per_coin 2>/dev/null", $o2);
+$current_coin = isset($o1[0]) ? $o1[0] : '1';
+$current_time = isset($o2[0]) ? $o2[0] : '10';
+?>
+
+<div class="card">
+    <h3>System Settings</h3>
+    <?php if ($msg): ?>
+        <div class="alert alert-success"><?php echo $msg; ?></div>
     <?php endif; ?>
     
     <form method="post">
-        <div class="form-group">
-            <label for="coin_value">Coin Value (PHP):</label>
-            <input type="number" id="coin_value" name="coin_value" value="<?php echo isset($config['coin_value']) ? htmlspecialchars($config['coin_value']) : '1'; ?>" required>
-        </div>
+        <label>Coin Value (PHP)</label>
+        <input type="number" name="coin_value" value="<?php echo $current_coin; ?>" required>
         
-        <div class="form-group">
-            <label for="time_per_coin">Time per Coin (Minutes):</label>
-            <input type="number" id="time_per_coin" name="time_per_coin" value="<?php echo isset($config['time_per_coin']) ? htmlspecialchars($config['time_per_coin']) : '10'; ?>" required>
-        </div>
+        <label>Time per Coin (Minutes)</label>
+        <input type="number" name="time_per_coin" value="<?php echo $current_time; ?>" required>
         
-        <button type="submit">Save Settings</button>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
     </form>
-    
-    <p><a href="index.php">Back to Portal</a></p>
-</body>
-</html>
-EOF_ADMIN
+</div>
+
+<?php include 'footer.php'; ?>
+EOF_SETTINGS
 
 # 7. /usr/lib/lua/luci/view/pisowifi/admin.htm
 cat << 'EOF_VIEW' > /usr/lib/lua/luci/view/pisowifi/admin.htm
