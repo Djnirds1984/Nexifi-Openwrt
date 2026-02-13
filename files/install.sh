@@ -24,6 +24,40 @@ if [ ! -x /usr/bin/php-cli ]; then
     fi
 fi
 
+# Configure WiFi
+# Set SSID to 'Pisowifi' and open encryption
+# Note: We loop through available radios (radio0, radio1, etc.)
+# We need to be careful with existing config.
+# A safer approach is to add a new interface if we want, or modify default.
+# Here we try to modify the default interface usually named 'default_radio0', 'default_radio1'
+# If not found, we just enable the radio and set ssid on the first interface found.
+
+radios=$(uci show wireless | grep "=wifi-device" | cut -d. -f2 | cut -d= -f1)
+
+for radio in $radios; do
+    # Enable radio
+    uci set wireless.$radio.disabled='0'
+    
+    # Find the first interface on this radio (usually default_$radio)
+    iface=$(uci show wireless | grep ".device='$radio'" | head -n 1 | cut -d. -f2)
+    
+    if [ -z "$iface" ]; then
+        # Create new iface if none exists
+        iface="default_$radio"
+        uci set wireless.$iface=wifi-iface
+        uci set wireless.$iface.device=$radio
+        uci set wireless.$iface.network=lan
+        uci set wireless.$iface.mode=ap
+    fi
+    
+    # Configure SSID and Encryption
+    uci set wireless.$iface.ssid='Pisowifi'
+    uci set wireless.$iface.encryption='none'
+done
+
+uci commit wireless
+wifi reload
+
 # Configure uhttpd to execute PHP
 uci set uhttpd.main.index_page='index.php'
 # Ensure PHP interpreter is set (remove if exists then add to avoid duplicates)
