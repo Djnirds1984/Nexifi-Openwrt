@@ -8,7 +8,7 @@ PROJECT_ROOT=$(pwd)
 # 1. Install dependencies
 echo "Installing required packages..."
 opkg update
-opkg install iptables-nft iptables-mod-nat-extra iptables-mod-conntrack-extra php8-cli php8-cgi php8-mod-session
+opkg install iptables-nft iptables-mod-nat-extra iptables-mod-conntrack-extra php8-cli php8-cgi php8-mod-session uhttpd-mod-lua
 
 # 2. Link System Files
 echo "Linking system configuration files..."
@@ -56,6 +56,9 @@ uci set uhttpd.main.index_page='index.php'
 uci set uhttpd.main.error_page='/index.php'
 uci -q del_list uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
 uci add_list uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
+uci -q delete uhttpd.main.lua_prefix
+uci set uhttpd.main.lua_prefix='/cgi-bin/luci'
+uci set uhttpd.main.cgi_prefix='/cgi-bin'
 # Point uhttpd home to this directory if we want to serve directly from here?
 # Usually /www is the home. If we cloned into /www/pisowifi, we need to access via /pisowifi/
 # But if we want it to be the ROOT, we might need to change home or symlink /www/index.php
