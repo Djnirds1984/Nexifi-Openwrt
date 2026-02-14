@@ -64,11 +64,71 @@ uci add_list uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
 if [ ! -f /www/index.php ] || grep -q "openwrt.org" /www/index.php; then
     cat << 'EOF' > /www/index.php
 <?php
-header("Location: http://10.0.0.1/pisowifi/");
+$portal = 'http://10.0.0.1/pisowifi/';
+$o = [];
+exec("uci -q get pisowifi.general.portal_url", $o, $ret);
+if ($ret === 0 && isset($o[0]) && $o[0] !== '') {
+    $portal = $o[0];
+    if (substr($portal, -1) !== '/') {
+        $portal .= '/';
+    }
+}
+header("Location: " . $portal, true, 302);
 exit;
 ?>
 EOF
 fi
+
+# Create CNA endpoints
+cat << 'EOF' > /www/generate_204.php
+<?php
+$portal = 'http://10.0.0.1/pisowifi/';
+$o = [];
+exec("uci -q get pisowifi.general.portal_url", $o, $ret);
+if ($ret === 0 && isset($o[0]) && $o[0] !== '') {
+    $portal = $o[0];
+    if (substr($portal, -1) !== '/') {
+        $portal .= '/';
+    }
+}
+header("Location: " . $portal, true, 302);
+exit;
+?>
+EOF
+
+cat << 'EOF' > /www/hotspot-detect.php
+<?php
+$portal = 'http://10.0.0.1/pisowifi/';
+$o = [];
+exec("uci -q get pisowifi.general.portal_url", $o, $ret);
+if ($ret === 0 && isset($o[0]) && $o[0] !== '') {
+    $portal = $o[0];
+    if (substr($portal, -1) !== '/') {
+        $portal .= '/';
+    }
+}
+header("Location: " . $portal, true, 302);
+exit;
+?>
+EOF
+
+cat << 'EOF' > /www/redirect.php
+<?php
+$portal = 'http://10.0.0.1/pisowifi/';
+$o = [];
+exec("uci -q get pisowifi.general.portal_url", $o, $ret);
+if ($ret === 0 && isset($o[0]) && $o[0] !== '') {
+    $portal = $o[0];
+    if (substr($portal, -1) !== '/') {
+        $portal .= '/';
+    }
+}
+header("Location: " . $portal, true, 302);
+exit;
+?>
+EOF
+
+echo "Captive Portal" > /www/connecttest.txt
 
 uci commit uhttpd
 /etc/init.d/uhttpd restart

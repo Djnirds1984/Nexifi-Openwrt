@@ -9,6 +9,15 @@ fi
 
 cat << 'EOF' > /www/index.php
 <?php
+$portal = 'http://10.0.0.1/pisowifi/';
+$o = [];
+exec("uci -q get pisowifi.general.portal_url", $o, $ret);
+if ($ret === 0 && isset($o[0]) && $o[0] !== '') {
+    $portal = $o[0];
+    if (substr($portal, -1) !== '/') {
+        $portal .= '/';
+    }
+}
 $host = $_SERVER['HTTP_HOST'];
 // Adjust these IPs to match your router's LAN IP
 $router_ips = ['192.168.1.1', '10.0.0.1', 'openwrt.lan'];
@@ -25,7 +34,7 @@ foreach ($router_ips as $ip) {
 if (!$is_admin) {
     // Captive portal user
     // Use absolute URL to force captive portal detection on some devices
-    header("Location: http://10.0.0.1/pisowifi/");
+    header("Location: " . $portal, true, 302);
     exit;
 }
 
@@ -34,6 +43,57 @@ header("Location: /cgi-bin/luci");
 exit;
 ?>
 EOF
+ 
+# Create CNA endpoints
+cat << 'EOF' > /www/generate_204.php
+<?php
+$portal = 'http://10.0.0.1/pisowifi/';
+$o = [];
+exec("uci -q get pisowifi.general.portal_url", $o, $ret);
+if ($ret === 0 && isset($o[0]) && $o[0] !== '') {
+    $portal = $o[0];
+    if (substr($portal, -1) !== '/') {
+        $portal .= '/';
+    }
+}
+header("Location: " . $portal, true, 302);
+exit;
+?>
+EOF
+
+cat << 'EOF' > /www/hotspot-detect.php
+<?php
+$portal = 'http://10.0.0.1/pisowifi/';
+$o = [];
+exec("uci -q get pisowifi.general.portal_url", $o, $ret);
+if ($ret === 0 && isset($o[0]) && $o[0] !== '') {
+    $portal = $o[0];
+    if (substr($portal, -1) !== '/') {
+        $portal .= '/';
+    }
+}
+header("Location: " . $portal, true, 302);
+exit;
+?>
+EOF
+
+cat << 'EOF' > /www/redirect.php
+<?php
+$portal = 'http://10.0.0.1/pisowifi/';
+$o = [];
+exec("uci -q get pisowifi.general.portal_url", $o, $ret);
+if ($ret === 0 && isset($o[0]) && $o[0] !== '') {
+    $portal = $o[0];
+    if (substr($portal, -1) !== '/') {
+        $portal .= '/';
+    }
+}
+header("Location: " . $portal, true, 302);
+exit;
+?>
+EOF
+
+echo "Captive Portal" > /www/connecttest.txt
 
 # Configure uhttpd to support PHP and index.php
 uci set uhttpd.main.index_page='index.php'
