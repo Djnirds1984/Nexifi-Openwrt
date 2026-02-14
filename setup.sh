@@ -9,6 +9,7 @@ PROJECT_ROOT=$(pwd)
 echo "Installing required packages..."
 opkg update
 opkg install iptables-nft iptables-mod-nat-extra iptables-mod-conntrack-extra php8-cli php8-cgi php8-mod-session uhttpd-mod-lua
+opkg install node
 
 # 2. Link System Files
 echo "Linking system configuration files..."
@@ -34,6 +35,12 @@ if [ -f "$PROJECT_ROOT/bin/pisowifi-backend.php" ]; then
     rm -f /usr/bin/pisowifi-backend.php
     ln -s "$PROJECT_ROOT/bin/pisowifi-backend.php" /usr/bin/pisowifi-backend.php
     chmod +x /usr/bin/pisowifi-backend.php
+fi
+
+# Node server
+if [ -f "$PROJECT_ROOT/bin/pisowifi-node-server.js" ]; then
+    rm -f /usr/bin/pisowifi-node-server.js
+    ln -s "$PROJECT_ROOT/bin/pisowifi-node-server.js" /usr/bin/pisowifi-node-server.js
 fi
 
 # LuCI Controller
@@ -160,5 +167,16 @@ uci commit dhcp
 echo "Starting Pisowifi services..."
 /etc/init.d/pisowifi enable
 /etc/init.d/pisowifi start
+
+# Init script for Node
+if [ -f "$PROJECT_ROOT/system/init.d/pisowifi-node" ]; then
+    rm -f /etc/init.d/pisowifi-node
+    ln -s "$PROJECT_ROOT/system/init.d/pisowifi-node" /etc/init.d/pisowifi-node
+    chmod +x /etc/init.d/pisowifi-node
+fi
+/etc/init.d/uhttpd stop
+/etc/init.d/uhttpd disable
+/etc/init.d/pisowifi-node enable
+/etc/init.d/pisowifi-node restart
 
 echo "Setup complete!"

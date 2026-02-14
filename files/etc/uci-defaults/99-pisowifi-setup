@@ -106,6 +106,17 @@ uci set uhttpd.main.lua_handler='/usr/lib/lua/luci/sgi/uhttpd.lua'
 uci set uhttpd.main.cgi_prefix='/cgi-bin'
 uci commit uhttpd
 /etc/init.d/uhttpd restart
+opkg update
+opkg install node
+rm -f /usr/bin/pisowifi-node-server.js
+ln -s /root/Nexifi-Openwrt/bin/pisowifi-node-server.js /usr/bin/pisowifi-node-server.js 2>/dev/null || true
+rm -f /etc/init.d/pisowifi-node
+ln -s /root/Nexifi-Openwrt/system/init.d/pisowifi-node /etc/init.d/pisowifi-node 2>/dev/null || true
+chmod +x /etc/init.d/pisowifi-node
+/etc/init.d/uhttpd stop
+/etc/init.d/uhttpd disable
+/etc/init.d/pisowifi-node enable
+/etc/init.d/pisowifi-node restart
 
 # Force DNS to router IP for captive detection
 uci -q del_list dhcp.@dnsmasq[0].address='/#/10.0.0.1'

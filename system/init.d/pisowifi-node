@@ -1,0 +1,9 @@
+#!/bin/sh /etc/rc.common
+START=98
+STOP=10
+start() {
+    service_start /usr/bin/node /usr/bin/pisowifi-node-server.js
+}
+stop() {
+    service_stop /usr/bin/node /usr/bin/pisowifi-node-server.js
+}
