@@ -1,4 +1,4 @@
 config pisowifi 'general'
     option coin_value '1'
     option time_per_coin '10' # minutes
-    option portal_url 'http://10.0.0.1/pisowifi'
+    option portal_url 'http://10.0.0.1/portal'
