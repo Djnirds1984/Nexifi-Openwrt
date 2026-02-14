@@ -135,15 +135,27 @@ $networks = getNetworks();
 // List Wireless Interfaces
 $wifis = [];
 exec("uci show wireless", $wifi_out);
-$wifi_map = [];
+$wifi_sections = [];
 foreach ($wifi_out as $line) {
-    if (preg_match("/wireless\.(@wifi-iface\[\d+\])\.(\w+)='?(.*?)'?$/", $line, $m)) {
-        $wifi_map[$m[1]][$m[2]] = $m[3];
-        $wifi_map[$m[1]]['section'] = $m[1];
+    if (preg_match("/^wireless\.(@wifi-iface\[\d+\])=wifi-iface$/", $line, $m)) {
+        $wifi_sections[$m[1]] = ['section' => $m[1]];
+    } elseif (preg_match("/^wireless\.([^.]+)=wifi-iface$/", $line, $m)) {
+        $wifi_sections[$m[1]] = ['section' => $m[1]];
     }
 }
-foreach ($wifi_map as $w) {
-    if (isset($w['mode']) && $w['mode'] == 'ap') {
+foreach ($wifi_out as $line) {
+    if (preg_match("/^wireless\.(@wifi-iface\[\d+\])\.(\w+)=['\"]?(.*?)['\"]?$/", $line, $m)) {
+        if (isset($wifi_sections[$m[1]])) {
+            $wifi_sections[$m[1]][$m[2]] = $m[3];
+        }
+    } elseif (preg_match("/^wireless\.([^.]+)\.(\w+)=['\"]?(.*?)['\"]?$/", $line, $m)) {
+        if (isset($wifi_sections[$m[1]])) {
+            $wifi_sections[$m[1]][$m[2]] = $m[3];
+        }
+    }
+}
+foreach ($wifi_sections as $w) {
+    if (isset($w['mode']) && $w['mode'] === 'ap') {
         $wifis[] = $w;
     }
 }
