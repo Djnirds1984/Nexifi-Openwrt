@@ -96,8 +96,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = "hotspot_" . $clean_dev;
         
         // Check if already exists
-        exec("uci get network.$name", $check);
-        if (strpos(implode($check), 'Entry not found') === false) {
+        $check = [];
+        $return_code = 0;
+        exec("uci -q get network.$name", $check, $return_code);
+        if ($return_code === 0) {
             $msg = "Error: Hotspot for this interface already exists ($name).";
         } else {
             // 1. Create Network Interface
