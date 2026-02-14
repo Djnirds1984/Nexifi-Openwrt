@@ -58,6 +58,7 @@ uci -q del_list uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
 uci add_list uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
 uci -q delete uhttpd.main.lua_prefix
 uci set uhttpd.main.lua_prefix='/cgi-bin/luci'
+uci set uhttpd.main.lua_handler='/usr/lib/lua/luci/sgi/uhttpd.lua'
 uci set uhttpd.main.cgi_prefix='/cgi-bin'
 # Point uhttpd home to this directory if we want to serve directly from here?
 # Usually /www is the home. If we cloned into /www/pisowifi, we need to access via /pisowifi/
@@ -148,6 +149,12 @@ echo "Captive Portal" > /www/connecttest.txt
 
 uci commit uhttpd
 /etc/init.d/uhttpd restart
+
+# Force DNS to router IP for captive detection
+uci -q del_list dhcp.@dnsmasq[0].address='/#/10.0.0.1'
+uci add_list dhcp.@dnsmasq[0].address='/#/10.0.0.1'
+uci commit dhcp
+/etc/init.d/dnsmasq restart
 
 # 4. Start Services
 echo "Starting Pisowifi services..."
