@@ -20,7 +20,7 @@ if ($ret === 0 && isset($o[0]) && $o[0] !== '') {
 }
 $host = $_SERVER['HTTP_HOST'];
 // Adjust these IPs to match your router's LAN IP
-$router_ips = ['192.168.1.1', '10.0.0.1', 'openwrt.lan'];
+$router_ips = ['openwrt.lan'];
 
 // Check if the request is for the router admin interface
 $is_admin = false;

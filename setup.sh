@@ -73,7 +73,20 @@ if ($ret === 0 && isset($o[0]) && $o[0] !== '') {
         $portal .= '/';
     }
 }
-header("Location: " . $portal, true, 302);
+$host = $_SERVER['HTTP_HOST'];
+$router_ips = ['openwrt.lan'];
+$is_admin = false;
+foreach ($router_ips as $ip) {
+    if (strpos($host, $ip) !== false) {
+        $is_admin = true;
+        break;
+    }
+}
+if (!$is_admin) {
+    header("Location: " . $portal, true, 302);
+    exit;
+}
+header("Location: /cgi-bin/luci");
 exit;
 ?>
 EOF
