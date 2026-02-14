@@ -15,6 +15,22 @@ function getRadios() {
     return $radios;
 }
 
+// Helper to get radio device details
+function getRadioDetails() {
+    $devices = [];
+    exec("uci show wireless", $lines);
+    foreach ($lines as $line) {
+        if (preg_match("/^wireless\.([^.]+)=wifi-device$/", $line, $m)) {
+            $devices[$m[1]] = ['name' => $m[1]];
+        } elseif (preg_match("/^wireless\.([^.]+)\.(\w+)='?(.*?)'?$/", $line, $m)) {
+            if (isset($devices[$m[1]])) {
+                $devices[$m[1]][$m[2]] = $m[3];
+            }
+        }
+    }
+    return $devices;
+}
+
 // Helper to get Networks
 function getNetworks() {
     $networks = [];
@@ -39,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         // Add wifi-iface without network attachment (user will bridge it later)
         exec("uci add wireless wifi-iface > /tmp/new_iface_id");
-        $id = trim(file_get_contents('/tmp/new_iface_id'));
+        $id = trim((string)file_get_contents('/tmp/new_iface_id'));
         exec("uci set wireless.$id.device=$radio");
         exec("uci set wireless.$id.mode='ap'");
         exec("uci set wireless.$id.ssid=$ssid");
@@ -65,9 +81,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exec("wifi reload");
         $msg = "SSID deleted.";
     }
+
+    if (isset($_POST['update_ssid'])) {
+        $section = $_POST['section'];
+        $ssid = escapeshellarg($_POST['ssid'] ?? '');
+        $encryption = $_POST['encryption'] ?? 'none';
+        $hidden = isset($_POST['hidden']) ? '1' : '0';
+        $isolate = isset($_POST['isolate']) ? '1' : '0';
+        $key = $_POST['key'] ?? '';
+
+        if (!empty($ssid)) {
+            exec("uci set wireless.$section.ssid=$ssid");
+        }
+        exec("uci set wireless.$section.encryption='" . escapeshellarg($encryption) . "'");
+        exec("uci set wireless.$section.hidden='$hidden'");
+        exec("uci set wireless.$section.isolate='$isolate'");
+
+        if ($encryption === 'none') {
+            exec("uci -q delete wireless.$section.key");
+        } else {
+            exec("uci set wireless.$section.key=" . escapeshellarg($key));
+        }
+
+        exec("uci commit wireless");
+        exec("wifi reload");
+        $msg = "SSID updated successfully.";
+    }
+
+    if (isset($_POST['update_radio'])) {
+        $radio = $_POST['radio_name'];
+        $country = $_POST['country'] ?? '';
+        $channel = $_POST['channel'] ?? '';
+        $htmode = $_POST['htmode'] ?? '';
+        $txpower = $_POST['txpower'] ?? '';
+        $disabled = isset($_POST['disabled']) ? '1' : '0';
+
+        if ($country !== '') exec("uci set wireless.$radio.country='" . escapeshellarg($country) . "'");
+        if ($channel !== '') exec("uci set wireless.$radio.channel='" . escapeshellarg($channel) . "'");
+        if ($htmode !== '') exec("uci set wireless.$radio.htmode='" . escapeshellarg($htmode) . "'");
+        if ($txpower !== '') exec("uci set wireless.$radio.txpower='" . escapeshellarg($txpower) . "'");
+        exec("uci set wireless.$radio.disabled='$disabled'");
+
+        exec("uci commit wireless");
+        exec("wifi reload");
+        $msg = "Radio '$radio' updated successfully.";
+    }
 }
 
 $radios = getRadios();
+$radio_details = getRadioDetails();
 $networks = getNetworks();
 
 // List Wireless Interfaces
@@ -120,6 +182,47 @@ foreach ($wifi_map as $w) {
 </div>
 
 <div class="card">
+    <h3>Radio Devices</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Radio</th>
+                <th>Country</th>
+                <th>Channel</th>
+                <th>HT Mode</th>
+                <th>Tx Power</th>
+                <th>Disabled</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($radio_details as $rd): ?>
+            <tr>
+                <form method="post">
+                    <td><?php echo $rd['name']; ?><input type="hidden" name="radio_name" value="<?php echo $rd['name']; ?>"></td>
+                    <td><input type="text" name="country" value="<?php echo isset($rd['country']) ? htmlspecialchars($rd['country']) : ''; ?>" placeholder="e.g., US"></td>
+                    <td><input type="text" name="channel" value="<?php echo isset($rd['channel']) ? htmlspecialchars($rd['channel']) : ''; ?>" placeholder="auto or number"></td>
+                    <td>
+                        <select name="htmode">
+                            <?php $hm = isset($rd['htmode']) ? $rd['htmode'] : ''; ?>
+                            <option value="" <?php echo $hm==''?'selected':''; ?>>Auto</option>
+                            <option value="HT20" <?php echo $hm=='HT20'?'selected':''; ?>>HT20</option>
+                            <option value="HT40" <?php echo $hm=='HT40'?'selected':''; ?>>HT40</option>
+                            <option value="VHT80" <?php echo $hm=='VHT80'?'selected':''; ?>>VHT80</option>
+                            <option value="HE80" <?php echo $hm=='HE80'?'selected':''; ?>>HE80</option>
+                        </select>
+                    </td>
+                    <td><input type="text" name="txpower" value="<?php echo isset($rd['txpower']) ? htmlspecialchars($rd['txpower']) : ''; ?>" placeholder="dBm"></td>
+                    <td><input type="checkbox" name="disabled" <?php echo (isset($rd['disabled']) && $rd['disabled']=='1') ? 'checked' : ''; ?>></td>
+                    <td><button type="submit" name="update_radio" class="btn btn-secondary">Update</button></td>
+                </form>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
     <h3>Active Access Points</h3>
     <table>
         <thead>
@@ -128,6 +231,8 @@ foreach ($wifi_map as $w) {
                 <th>Radio</th>
                 <th>Network</th>
                 <th>Encryption</th>
+                <th>Hidden</th>
+                <th>Isolate</th>
                 <th>Action</th>
             </tr>
         </thead>
@@ -141,8 +246,23 @@ foreach ($wifi_map as $w) {
                     <td><?php echo isset($w['device']) ? $w['device'] : '-'; ?></td>
                     <td><?php echo isset($w['network']) ? $w['network'] : '-'; ?></td>
                     <td><?php echo isset($w['encryption']) ? $w['encryption'] : 'none'; ?></td>
+                    <td><?php echo isset($w['hidden']) ? $w['hidden'] : '0'; ?></td>
+                    <td><?php echo isset($w['isolate']) ? $w['isolate'] : '0'; ?></td>
                     <td>
-                        <form method="post" onsubmit="return confirm('Delete this SSID?');">
+                        <form method="post" style="display:inline-block; margin-right:8px;">
+                            <input type="hidden" name="section" value="<?php echo $w['section']; ?>">
+                            <input type="text" name="ssid" value="<?php echo isset($w['ssid']) ? htmlspecialchars($w['ssid']) : ''; ?>" placeholder="SSID" style="width:150px;">
+                            <select name="encryption" style="width:140px;">
+                                <?php $enc = isset($w['encryption']) ? $w['encryption'] : 'none'; ?>
+                                <option value="none" <?php echo $enc=='none'?'selected':''; ?>>Open</option>
+                                <option value="psk2" <?php echo $enc=='psk2'?'selected':''; ?>>WPA2-PSK</option>
+                            </select>
+                            <input type="password" name="key" placeholder="Password" style="width:150px;">
+                            <label style="margin-left:6px;"><input type="checkbox" name="hidden" <?php echo (isset($w['hidden']) && $w['hidden']=='1')?'checked':''; ?>> Hidden</label>
+                            <label style="margin-left:6px;"><input type="checkbox" name="isolate" <?php echo (isset($w['isolate']) && $w['isolate']=='1')?'checked':''; ?>> Isolate</label>
+                            <button type="submit" name="update_ssid" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.8em;">Update</button>
+                        </form>
+                        <form method="post" onsubmit="return confirm('Delete this SSID?');" style="display:inline-block;">
                             <input type="hidden" name="delete_ssid" value="<?php echo $w['section']; ?>">
                             <button type="submit" class="btn btn-danger" style="padding: 4px 8px; font-size: 0.8em;">Delete</button>
                         </form>
